@@ -6,7 +6,7 @@ from services.documentation_service import DocumentationService, get_documentati
 router = APIRouter()
 
 @router.post("/docs")
-def hello_world(
+def generate_docs(
         generated_doc_request: GeneratedDocRequest,
         documentation_service: DocumentationService = Depends(get_documentation_service)
 ) -> GeneratedDocResponse:
