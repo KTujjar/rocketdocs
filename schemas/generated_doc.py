@@ -5,4 +5,3 @@ class GeneratedDocRequest(BaseModel):
 
 class GeneratedDocResponse(BaseModel):
     content: str
-

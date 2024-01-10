@@ -10,6 +10,5 @@ def hello_world(
         generated_doc_request: GeneratedDocRequest,
         documentation_service: DocumentationService = Depends(get_documentation_service)
 ) -> GeneratedDocResponse:
-    return GeneratedDocResponse(content="documentation...")
     data = documentation_service.generate_doc_for_github_file(file_url=generated_doc_request.url)
     return data
