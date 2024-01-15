@@ -1,7 +1,9 @@
 from pydantic import BaseModel
 
-class GeneratedDocRequest(BaseModel):
+
+class GenerateFileDocRequest(BaseModel):
     url: str
+
 
 class GeneratedDocResponse(BaseModel):
     content: str

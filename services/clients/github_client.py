@@ -1,9 +1,12 @@
 import base64
+import os
 from urllib.parse import urlparse
 
 import requests
 
 from typing import Optional
+
+from dotenv import load_dotenv
 
 
 class GitHubClient:
@@ -23,10 +26,15 @@ class GitHubClient:
         request.raise_for_status()
 
         data = request.json()
+        if "type" in data and data["type"] == "dir":
+            raise ValueError(f"{github_url} is a folder, not a file.")
+
         file_content = data["content"]
         file_content_encoding = data.get('encoding')
         if file_content_encoding == 'base64':
             file_content = base64.b64decode(file_content).decode()
+        else:
+            raise RuntimeError("Could not decode file content")
 
         return file_content
 
@@ -46,10 +54,12 @@ class GitHubClient:
 
 
 def get_github_client():
-    return GitHubClient()
+    github_api_key = os.getenv("GITHUB_API_KEY")
+    return GitHubClient(token=github_api_key)
 
 
 if __name__ == "__main__":
+    load_dotenv()
     github = get_github_client()
     content = github.read_file("https://github.com/carlos-jmh/miniDiscord/blob/main/chat/storage.go")
     print(content)

@@ -1,7 +1,7 @@
 import os
 
 from typing import Optional
-from services.llm_client import LLMClient
+from services.clients.llm_client import LLMClient
 from openai import OpenAI
 
 
@@ -11,7 +11,7 @@ class OpenAIClient(LLMClient):
         self.model = model
         self.openai = OpenAI(api_key=self.api_key)
 
-    def generate_text(self, prompt: str, system_prompt: str, max_tokens: Optional[int] = None) -> str:
+    async def generate_text(self, prompt: str, system_prompt: str, max_tokens: Optional[int] = None) -> str:
         completion = self.openai.chat.completions.create(
             model=self.model,
             messages=[
@@ -22,6 +22,7 @@ class OpenAIClient(LLMClient):
         )
 
         return completion.choices[0].message.content
+        # return """This is an example response"""
 
 
 def get_openai_client():
