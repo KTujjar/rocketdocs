@@ -5,6 +5,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+creds/
 
 build/
 *.pyc
