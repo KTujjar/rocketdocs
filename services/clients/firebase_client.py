@@ -20,8 +20,6 @@ class FirebaseClient:
 
     def add_document(self, collection_name, data) -> DocumentReference:
         collection_ref = self.db.collection(collection_name)
-
-        print(data)
         update_time, document_ref = collection_ref.add(data)
         return document_ref
 
