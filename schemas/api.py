@@ -1,9 +1,4 @@
 from pydantic import BaseModel
-from enum import Enum
-
-class DocsStatusEnum(str, Enum):
-    STARTED = 'STARTED'
-    COMPLETED = 'COMPLETED'
 
 # POST /file-docs
 

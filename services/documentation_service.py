@@ -1,5 +1,8 @@
 import asyncio
 from typing import Coroutine, List, Any
+from schemas.database import FirestoreDocumentationUpdateModel
+from schemas.documentation_generation_enums import DocsStatusEnum
+from services.clients.firebase_client import FirebaseClient
 
 from schemas.generated_doc import GeneratedDocResponse
 from dotenv import load_dotenv
@@ -48,6 +51,29 @@ class DocumentationService:
         for coroutine in coroutines:
             tasks.append(asyncio.ensure_future(coroutine))
         return await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # background tasks for generating the documentation
+    async def generate_documentation_background(
+        self,
+        firebase_client: FirebaseClient,
+        firebase_file_id: str,
+        github_url: str, 
+    ):
+        generated_docs = await self.generate_doc_for_github_file(github_url)
+
+        blob_url = firebase_client.get_blob_url(firebase_file_id)
+
+        firebase_client.add_blob(blob_url, generated_docs.content)
+        
+        firebase_client.update_document(
+            FirebaseClient.TEST_COLLECTION, 
+            firebase_file_id, 
+            FirestoreDocumentationUpdateModel
+            (
+                bucket_url=blob_url,
+                status=DocsStatusEnum.COMPLETED
+            ).model_dump()
+        )
 
 
 def get_documentation_service() -> DocumentationService:
