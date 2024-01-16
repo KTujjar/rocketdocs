@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from schemas.api import GenerateFileDocsRequest, GenerateFileDocsResponse, GetFileDocsResponse, DocsStatusEnum
-from schemas.database import FirebaseDocumentationModel
+from schemas.database import FirestoreDocumentationCreateModel, FirestoreDocumentationUpdateModel
 
 from services.documentation_service import DocumentationService, get_documentation_service
 from services.clients.firebase_client import FirebaseClient, get_firebase_client
@@ -27,10 +27,11 @@ async def generate_documentation(
     firebase_client.update_document(
         FirebaseClient.TEST_COLLECTION, 
         firebase_file_id, 
-        {
-            "bucket_url": blob_url,
-            "status": DocsStatusEnum.COMPLETED
-        }
+        FirestoreDocumentationUpdateModel
+        (
+            bucket_url=blob_url,
+            status=DocsStatusEnum.COMPLETED
+        ).model_dump()
     )
 
 
@@ -46,11 +47,12 @@ async def generate_file_docs(
         # add document to firebase
         document_ref = firebase_client.add_document(
             FirebaseClient.TEST_COLLECTION, 
-            {
-                "github_url": generate_file_docs_request.github_url, 
-                "bucket_url": None,
-                "status": DocsStatusEnum.STARTED
-            }
+            FirestoreDocumentationCreateModel
+            (
+                github_url=generate_file_docs_request.github_url,
+                bucket_url=None,
+                status=DocsStatusEnum.COMPLETED
+            ).model_dump()
         )
 
         # add task to be done async
@@ -78,12 +80,11 @@ async def get_file_docs(
         if (not document_dict):
             raise HTTPException(status_code=http.client.NOT_FOUND, detail=f"Document {id} not found")
 
-        status = document_dict.get("status")
+        status = DocsStatusEnum(document_dict.get("status"))
         blob_url = document_dict.get("bucket_url")
 
-        # if it is completed get the content, otherwise return nothing
+        # if it is completed get the content, otherwise return None
         content = None
-        
         if (status == DocsStatusEnum.COMPLETED):
             content = firebase_client.get_blob(blob_url).download_as_string()
 
