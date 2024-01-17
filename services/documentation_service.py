@@ -1,7 +1,8 @@
 import asyncio
 from typing import Coroutine, List, Any
-from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationCreateModel, FirestoreDocumentationUpdateModel, GeneratedDocResponse
-from services.clients.firebase_client import FirebaseClient
+from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationCreateModel, \
+    FirestoreDocumentationUpdateModel, GeneratedDocResponse
+from services.clients.firebase_client import FirebaseClient, get_firebase_client
 from google.cloud.firestore_v1 import DocumentReference
 from fastapi import BackgroundTasks
 
@@ -13,9 +14,10 @@ from services.clients.github_client import GitHubClient, get_github_client
 
 
 class DocumentationService:
-    def __init__(self, llm_client: LLMClient, github_client: GitHubClient):
+    def __init__(self, llm_client: LLMClient, github_client: GitHubClient, firebase_client: FirebaseClient):
         self.llm_client = llm_client
         self.github_client = github_client
+        self.firebase_client = firebase_client
         self.system_prompt_for_file = """
             Your job is to provide very high-level documentation of code provided to you.
     
@@ -51,23 +53,22 @@ class DocumentationService:
         for coroutine in coroutines:
             tasks.append(asyncio.ensure_future(coroutine))
         return await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     # background tasks for generating the documentation
-    async def generate_documentation_background(
-        self,
-        firebase_client: FirebaseClient,
-        firebase_file_id: str,
-        github_url: str, 
+    def generate_documentation_background(
+            self,
+            firebase_file_id: str,
+            github_url: str,
     ):
-        generated_docs = await self.generate_doc_for_github_file(github_url)
+        generated_docs = asyncio.run(self.generate_doc_for_github_file(github_url))
 
-        blob_url = firebase_client.get_blob_url(firebase_file_id)
+        blob_url = self.firebase_client.get_blob_url(firebase_file_id)
 
-        firebase_client.add_blob(blob_url, generated_docs.content)
-        
-        firebase_client.update_document(
-            FirebaseClient.TEST_COLLECTION, 
-            firebase_file_id, 
+        self.firebase_client.add_blob(blob_url, generated_docs.content)
+
+        self.firebase_client.update_document(
+            FirebaseClient.TEST_COLLECTION,
+            firebase_file_id,
             FirestoreDocumentationUpdateModel
             (
                 bucket_url=blob_url,
@@ -75,14 +76,13 @@ class DocumentationService:
             ).model_dump()
         )
 
-    async def create_document_generation_job(
-        self,
-        background_tasks: BackgroundTasks,
-        firebase_client: FirebaseClient,
-        github_url: str
-    ) -> DocumentReference: 
-        document_ref = firebase_client.add_document(
-            FirebaseClient.TEST_COLLECTION, 
+    def create_document_generation_job(
+            self,
+            background_tasks: BackgroundTasks,
+            github_url: str
+    ) -> DocumentReference:
+        document_ref = self.firebase_client.add_document(
+            FirebaseClient.TEST_COLLECTION,
             FirestoreDocumentationCreateModel
             (
                 github_url=github_url,
@@ -91,21 +91,22 @@ class DocumentationService:
             ).model_dump()
         )
 
-         # add task to be done async
+        # add task to be done async
         background_tasks.add_task(
-            self.generate_documentation_background, 
-            firebase_client, 
-            document_ref.id, 
+            self.generate_documentation_background,
+            document_ref.id,
             github_url
         )
 
         return document_ref
 
+
 def get_documentation_service() -> DocumentationService:
     """Initializes the service with any dependencies it needs."""
     openai_client = get_openai_client()
     github_client = get_github_client()
-    return DocumentationService(openai_client, github_client)
+    firebase_client = get_firebase_client()
+    return DocumentationService(openai_client, github_client, firebase_client)
 
 
 # For manually testing this file
