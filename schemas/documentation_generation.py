@@ -2,6 +2,13 @@ from pydantic import BaseModel
 from enum import Enum
 
 
+class LlmModelEnum(str, Enum):
+    MIXTRAL = 'mistralai/Mixtral-8x7B-Instruct-v0.1'
+    MISTRAL = 'mistralai/Mistral-7B-Instruct-v0.1'
+    MISTRAL_ORCA = 'Open-Orca/Mistral-7B-OpenOrca'
+    LLAMA_7B = 'meta-llama/Llama-2-7b-chat-hf'
+
+
 class DocsStatusEnum(str, Enum):
     STARTED = 'STARTED'
     COMPLETED = 'COMPLETED'

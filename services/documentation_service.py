@@ -1,7 +1,7 @@
 import asyncio
 from typing import Coroutine, List, Any
 from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationCreateModel, \
-    FirestoreDocumentationUpdateModel, GeneratedDocResponse
+    FirestoreDocumentationUpdateModel, GeneratedDocResponse, LlmModelEnum
 from services.clients.firebase_client import FirebaseClient, get_firebase_client
 from google.cloud.firestore_v1 import DocumentReference
 from fastapi import BackgroundTasks
@@ -101,9 +101,9 @@ class DocumentationService:
         return document_ref
 
 
-def get_documentation_service() -> DocumentationService:
+def get_documentation_service(model: LlmModelEnum = LlmModelEnum.MIXTRAL) -> DocumentationService:
     """Initializes the service with any dependencies it needs."""
-    openai_client = get_openai_client()
+    openai_client = get_openai_client(model)
     github_client = get_github_client()
     firebase_client = get_firebase_client()
     return DocumentationService(openai_client, github_client, firebase_client)
