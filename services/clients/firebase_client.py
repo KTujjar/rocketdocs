@@ -9,8 +9,8 @@ from google.cloud.firestore_v1.base_document import DocumentSnapshot
 from google.cloud.firestore_v1.client import Client
 from google.cloud.storage import Blob
 
-
 class FirebaseClient:
+    TEST_COLLECTION = "documentation"
 
     def __init__(self):
         self.bucket = storage.bucket()
@@ -40,15 +40,19 @@ class FirebaseClient:
         docs = self.db.collection(collection_name)
         return docs.stream()
 
-    def add_blob(self, blob_name, data):
-        blob = self.bucket.blob(blob_name)
+    def add_blob(self, blob_url, data):
+        blob = self.bucket.blob(blob_url)
         blob.upload_from_string(data)
 
-    def get_blob(self, blob_name) -> Blob:
-        return self.bucket.get_blob(blob_name)
+    def get_blob(self, blob_url) -> Blob:
+        return self.bucket.get_blob(blob_url)
+    
+    def get_blob_url(self, blob_name, folder="repo") -> str:
+        return f"/{folder}/{blob_name}"
 
 
-def get_firebase_client():
+
+def get_firebase_client() -> FirebaseClient:
     return FirebaseClient()
 
 
