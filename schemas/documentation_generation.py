@@ -33,6 +33,7 @@ class FirestoreDocumentationUpdateModel(BaseModel):
 
 class GenerateFileDocsRequest(BaseModel):
     github_url: str
+    model: LlmModelEnum = LlmModelEnum.MIXTRAL
 
 
 class GenerateFileDocsResponse(BaseModel):
@@ -44,5 +45,6 @@ class GenerateFileDocsResponse(BaseModel):
 
 class GetFileDocsResponse(BaseModel):
     id: str
+    github_url: str
     status: str
     content: str | None
