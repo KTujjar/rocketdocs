@@ -1,7 +1,9 @@
 import asyncio
 from typing import Coroutine, List, Any
-from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationUpdateModel, GeneratedDocResponse
+from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationCreateModel, FirestoreDocumentationUpdateModel, GeneratedDocResponse
 from services.clients.firebase_client import FirebaseClient
+from google.cloud.firestore_v1 import DocumentReference
+from fastapi import BackgroundTasks
 
 from dotenv import load_dotenv
 
@@ -73,6 +75,31 @@ class DocumentationService:
             ).model_dump()
         )
 
+    async def create_document_generation_job(
+        self,
+        background_tasks: BackgroundTasks,
+        firebase_client: FirebaseClient,
+        github_url: str
+    ) -> DocumentReference: 
+        document_ref = firebase_client.add_document(
+            FirebaseClient.TEST_COLLECTION, 
+            FirestoreDocumentationCreateModel
+            (
+                github_url=github_url,
+                bucket_url=None,
+                status=DocsStatusEnum.STARTED
+            ).model_dump()
+        )
+
+         # add task to be done async
+        background_tasks.add_task(
+            self.generate_documentation_background, 
+            firebase_client, 
+            document_ref.id, 
+            github_url
+        )
+
+        return document_ref
 
 def get_documentation_service() -> DocumentationService:
     """Initializes the service with any dependencies it needs."""

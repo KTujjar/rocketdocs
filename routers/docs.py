@@ -21,23 +21,7 @@ async def generate_file_docs(
             raise HTTPException(status_code=http.client.UNPROCESSABLE_ENTITY, detail="Required field 'github_url' is missing.")
 
         # add document to firebase
-        document_ref = firebase_client.add_document(
-            FirebaseClient.TEST_COLLECTION, 
-            FirestoreDocumentationCreateModel
-            (
-                github_url=generate_file_docs_request.github_url,
-                bucket_url=None,
-                status=DocsStatusEnum.COMPLETED
-            ).model_dump()
-        )
-
-        # add task to be done async
-        background_tasks.add_task(
-            documentation_service.generate_documentation_background, 
-            firebase_client, 
-            document_ref.id, 
-            generate_file_docs_request.github_url
-        )
+        document_ref = await documentation_service.create_document_generation_job(background_tasks, firebase_client, generate_file_docs_request.github_url)
 
         return GenerateFileDocsResponse(
             message="Documentation generation has been started.",
