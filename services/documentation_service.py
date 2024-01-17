@@ -1,10 +1,8 @@
 import asyncio
 from typing import Coroutine, List, Any
-from schemas.database import FirestoreDocumentationUpdateModel
-from schemas.documentation_generation_enums import DocsStatusEnum
+from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationUpdateModel, GeneratedDocResponse
 from services.clients.firebase_client import FirebaseClient
 
-from schemas.generated_doc import GeneratedDocResponse
 from dotenv import load_dotenv
 
 from services.clients.llm_client import LLMClient

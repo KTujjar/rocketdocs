@@ -2,11 +2,7 @@ import http.client
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-
-from schemas.api import GenerateFileDocsRequest, GenerateFileDocsResponse, GetFileDocsResponse
-from schemas.database import FirestoreDocumentationCreateModel, FirestoreDocumentationUpdateModel
-from schemas.documentation_generation_enums import DocsStatusEnum
-
+from schemas.documentation_generation import DocsStatusEnum, GenerateFileDocsRequest, GenerateFileDocsResponse, GetFileDocsResponse, FirestoreDocumentationCreateModel, FirestoreDocumentationUpdateModel
 from services.documentation_service import DocumentationService, get_documentation_service
 from services.clients.firebase_client import FirebaseClient, get_firebase_client
 
@@ -21,6 +17,8 @@ async def generate_file_docs(
         documentation_service: DocumentationService = Depends(get_documentation_service),
 ) -> GenerateFileDocsResponse:
     try:
+        if not generate_file_docs_request.github_url:
+            raise HTTPException(status_code=http.client.UNPROCESSABLE_ENTITY, detail="Required field 'github_url' is missing.")
 
         # add document to firebase
         document_ref = firebase_client.add_document(
@@ -61,7 +59,7 @@ async def get_file_docs(
         document_dict = firebase_client.get_document(firebase_client.TEST_COLLECTION, id).to_dict()
 
         if (not document_dict):
-            raise HTTPException(status_code=http.client.NOT_FOUND, detail=f"Document {id} not found")
+            raise HTTPException(status_code=http.client.NOT_FOUND, detail=f"Document {id} not found.")
 
         status = DocsStatusEnum(document_dict.get("status"))
         blob_url = document_dict.get("bucket_url")

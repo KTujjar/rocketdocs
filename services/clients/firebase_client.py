@@ -9,8 +9,6 @@ from google.cloud.firestore_v1.base_document import DocumentSnapshot
 from google.cloud.firestore_v1.client import Client
 from google.cloud.storage import Blob
 
-
-
 class FirebaseClient:
     TEST_COLLECTION = "documentation"
 
