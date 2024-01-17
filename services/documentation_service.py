@@ -4,7 +4,6 @@ from typing import Coroutine, List, Any, Dict
 from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationCreateModel, \
     FirestoreDocumentationUpdateModel, GeneratedDocResponse, LlmModelEnum
 from services.clients.firebase_client import FirebaseClient, get_firebase_client
-from google.cloud.firestore_v1 import DocumentReference
 from fastapi import BackgroundTasks, HTTPException
 
 from dotenv import load_dotenv
@@ -47,22 +46,12 @@ class DocumentationService:
             system_prompt=self.system_prompt_for_file,
             max_tokens=500
         )
-        if llm_response[0] == " ":
-            llm_response = llm_response[1:]
 
-        response = GeneratedDocResponse(content=llm_response)
+        validated_response = self._validate_llm_response(llm_response)
+
+        response = GeneratedDocResponse(content=validated_response)
 
         return response
-
-    @staticmethod
-    async def _run_concurrently(coroutines: List[Coroutine]) -> tuple[BaseException | Any]:
-        """This method leverages the asyncio library to run Coroutines concurrently.
-        :returns: an ordered tuple with the results of the coroutines, including exceptions
-        """
-        tasks = []
-        for coroutine in coroutines:
-            tasks.append(asyncio.ensure_future(coroutine))
-        return await asyncio.gather(*tasks, return_exceptions=True)
 
     # background tasks for generating the documentation
     def generate_documentation_background(
@@ -77,8 +66,7 @@ class DocumentationService:
 
         self.firebase_client.add_blob(blob_url, generated_docs.content)
 
-        self.firebase_client.update_document(
-            FirebaseClient.TEST_COLLECTION,
+        self.firebase_client.update_documentation(
             firebase_file_id,
             FirestoreDocumentationUpdateModel(
                 bucket_url=blob_url,
@@ -91,9 +79,8 @@ class DocumentationService:
             background_tasks: BackgroundTasks,
             github_url: str,
             model: LlmModelEnum = None
-    ) -> DocumentReference:
-        document_ref = self.firebase_client.add_document(
-            FirebaseClient.TEST_COLLECTION,
+    ) -> str:
+        doc_id = self.firebase_client.add_documentation(
             FirestoreDocumentationCreateModel(
                 github_url=github_url,
                 bucket_url=None,
@@ -104,30 +91,17 @@ class DocumentationService:
         # add task to be done async
         background_tasks.add_task(
             self.generate_documentation_background,
-            document_ref.id,
+            doc_id,
             github_url,
             model
         )
 
-        return document_ref
-
-    def get_documentation(self, doc_id: str) -> Dict[str, Any]:
-        document_snapshot = self.firebase_client.get_document(
-            self.firebase_client.TEST_COLLECTION,
-            doc_id
-        )
-
-        if not document_snapshot:
-            raise HTTPException(status_code=http.client.NOT_FOUND, detail=f"Document {doc_id} not found.")
-
-        # adding id field since Firestore does not do it naturally
-        document_dict = document_snapshot.to_dict()
-        document_dict["id"] = document_snapshot.id
-
-        return document_dict
+        return doc_id
 
     def get_documentation_with_content(self, doc_id: str) -> Dict[str, Any]:
-        doc = self.get_documentation(doc_id)
+        doc = self.firebase_client.get_documentation(doc_id)
+        if not doc:
+            raise HTTPException(status_code=http.client.NOT_FOUND, detail=f"Documentation {doc_id} not found")
 
         status = DocsStatusEnum(doc.get("status"))
         blob_url = doc.get("bucket_url")
@@ -138,6 +112,22 @@ class DocumentationService:
             doc["content"] = self.firebase_client.get_blob(blob_url).download_as_text()
 
         return doc
+
+    @staticmethod
+    def _validate_llm_response(llm_response: str) -> str:
+        if llm_response[0] == " ":
+            return llm_response[1:]
+        return llm_response
+
+    @staticmethod
+    async def _run_concurrently(coroutines: List[Coroutine]) -> tuple[BaseException | Any]:
+        """This method leverages the asyncio library to run Coroutines concurrently.
+        :returns: an ordered tuple with the results of the coroutines, including exceptions
+        """
+        tasks = []
+        for coroutine in coroutines:
+            tasks.append(asyncio.ensure_future(coroutine))
+        return await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def get_documentation_service() -> DocumentationService:

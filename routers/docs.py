@@ -26,7 +26,7 @@ async def generate_file_docs(
         github_client.extract_github_info(generate_file_docs_request.github_url)
 
         # add document to firebase
-        document_ref = documentation_service.create_document_generation_job(
+        doc_id = documentation_service.create_document_generation_job(
             background_tasks,
             generate_file_docs_request.github_url,
             generate_file_docs_request.model
@@ -34,7 +34,7 @@ async def generate_file_docs(
 
         return GenerateFileDocsResponse(
             message="Documentation generation has been started.",
-            id=document_ref.id
+            id=doc_id
         )
     except ValueError as e:
         raise HTTPException(status_code=http.client.BAD_REQUEST, detail=str(e))
