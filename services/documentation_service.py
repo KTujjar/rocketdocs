@@ -19,8 +19,6 @@ Your job is to provide very high-level documentation of code provided to you.
 You will respond in Markdown format, with the following sections:
 ## Description: (a string less than 100 words)
 ## Insights: ([string, string, string])
-
-Here is the code:
 """
 
 
@@ -41,9 +39,11 @@ class DocumentationService:
 
         file_content = self.github_client.read_file(file_url)
 
+        user_prompt = "Here is the code: \n" + file_content
+
         llm_response = await self.llm_client.generate_text(
             model=model,
-            prompt=file_content,
+            prompt=user_prompt,
             system_prompt=self.system_prompt_for_file,
             max_tokens=500
         )
