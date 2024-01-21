@@ -1,6 +1,5 @@
 import os
 
-from typing import Optional
 from services.clients.llm_client import LLMClient
 from openai import AsyncOpenAI
 
@@ -22,7 +21,6 @@ class OpenAIClient(LLMClient):
         )
 
         return completion.choices[0].message.content
-        # return """This is an example response"""
 
 
 def get_openai_client():
