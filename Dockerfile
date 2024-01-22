@@ -8,6 +8,6 @@ RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
 COPY . /code/rocketdocs
 
-EXPOSE 80
+EXPOSE 443
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "443", "--ssl-keyfile", "./creds/privkey.pem", "--ssl-certfile", "./creds/fullchain.pem"]

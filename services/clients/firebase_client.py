@@ -26,6 +26,7 @@ class FirebaseClient:
 
     def get_documentation(self, doc_id) -> Dict[str, Any] | None:
         document_snapshot = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
+
         if not document_snapshot:
             return None
 
@@ -51,7 +52,7 @@ class FirebaseClient:
 
     @staticmethod
     def get_blob_url(blob_name, folder="repo") -> str:
-        return f"/{folder}/{blob_name}"
+        return f"{folder}/{blob_name}"
 
     def _add(self, collection_path, data) -> DocumentReference:
         collection_ref = self.db.collection(collection_path)

@@ -7,6 +7,7 @@ import requests
 from typing import Optional
 
 from dotenv import load_dotenv
+from fastapi import HTTPException, status
 
 
 class GitHubClient:
@@ -27,7 +28,8 @@ class GitHubClient:
 
         data = request.json()
         if "type" in data and data["type"] == "dir":
-            raise ValueError(f"{github_url} is a folder, not a file.")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"{github_url} is not a file.")
 
         file_content = data["content"]
         file_content_encoding = data.get('encoding')
@@ -44,7 +46,8 @@ class GitHubClient:
         path_parts = url_parts.path.strip('/').split('/')
 
         if len(path_parts) < 2:
-            raise ValueError("Invalid GitHub url")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Invalid GitHub url")
 
         username = path_parts[0]
         repository_name = path_parts[1]

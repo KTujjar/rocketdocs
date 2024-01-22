@@ -1,10 +1,9 @@
 import asyncio
-import http.client
 from typing import Coroutine, List, Any, Dict
 from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationCreateModel, \
     FirestoreDocumentationUpdateModel, GeneratedDocResponse, LlmModelEnum
 from services.clients.firebase_client import FirebaseClient, get_firebase_client
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import BackgroundTasks, HTTPException, status
 
 from dotenv import load_dotenv
 
@@ -34,7 +33,8 @@ class DocumentationService:
             model: LlmModelEnum = LlmModelEnum.MIXTRAL
     ):
         if not file_url:
-            raise ValueError("File url cannot be empty")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="File url cannot be empty")
 
         file_content = self.github_client.read_file(file_url)
 
@@ -101,14 +101,14 @@ class DocumentationService:
     def get_documentation_with_content(self, doc_id: str) -> Dict[str, Any]:
         doc = self.firebase_client.get_documentation(doc_id)
         if not doc:
-            raise HTTPException(status_code=http.client.NOT_FOUND, detail=f"Documentation {doc_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Documentation {doc_id} not found")
 
-        status = DocsStatusEnum(doc.get("status"))
+        doc_status = DocsStatusEnum(doc.get("status"))
         blob_url = doc.get("bucket_url")
 
         # if it is completed get the content, otherwise return None
         doc["content"] = None
-        if status == DocsStatusEnum.COMPLETED:
+        if doc_status == DocsStatusEnum.COMPLETED:
             doc["content"] = self.firebase_client.get_blob(blob_url).download_as_text()
 
         return doc
