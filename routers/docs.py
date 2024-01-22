@@ -71,7 +71,6 @@ async def update_file_docs(
         documentation_service: DocumentationService = Depends(get_documentation_service),
         user: Dict[str, Any] = Depends(get_user_token),
 ) -> UpdateFileDocsResponse:
-
     doc_id = documentation_service.update_document_generation_job(
         background_tasks,
         doc_id,
