@@ -52,8 +52,8 @@ class GetFileDocsResponse(BaseModel):
 # DELETE /file-docs/{id}
     
 class DeleteFileDocsResponse(BaseModel):
-    id: str
     message: str
+    id: str
 
 # UPDATE /file-docs/{id}
     

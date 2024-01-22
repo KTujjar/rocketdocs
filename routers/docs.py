@@ -58,8 +58,8 @@ async def delete_file_docs(
     documentation_service.delete_documentation(doc_id)
 
     return DeleteFileDocsResponse(
-        id=doc_id,
-        message=f"The data associated with id='{doc_id}' was deleted."
+        message=f"The data associated with id='{doc_id}' was deleted.",
+        id=doc_id
     )
 
 
