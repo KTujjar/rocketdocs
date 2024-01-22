@@ -111,7 +111,7 @@ class DocumentationService:
         doc_status = DocsStatusEnum(doc.get("status"))
 
         if (doc_status == DocsStatusEnum.STARTED):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Data is still being generated for this id, so it cannot be regenerated yet.")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Data is still being generated for this id, so it cannot be regenerated yet.")
 
         # reset the bucket and set to started
         self.firebase_client.update_documentation(
@@ -157,7 +157,7 @@ class DocumentationService:
         doc_status = DocsStatusEnum(doc.get("status"))
 
         if (doc_status == DocsStatusEnum.STARTED):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Data is still being generated for this id, so it cannot be deleted yet.")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Data is still being generated for this id, so it cannot be deleted yet.")
 
         blob_url = doc.get("bucket_url")
 
