@@ -48,3 +48,19 @@ class GetFileDocsResponse(BaseModel):
     github_url: str
     status: str
     content: str | None
+
+# DELETE /file-docs/{id}
+    
+class DeleteFileDocsResponse(BaseModel):
+    id: str
+    message: str
+
+# UPDATE /file-docs/{id}
+    
+class UpdateFileDocsRequest(BaseModel):
+    model: LlmModelEnum = LlmModelEnum.MIXTRAL
+
+
+class UpdateFileDocsResponse(BaseModel):
+    message: str
+    id: str

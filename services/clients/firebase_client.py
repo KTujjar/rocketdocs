@@ -23,6 +23,9 @@ class FirebaseClient:
 
     def get_blob(self, blob_url) -> Blob:
         return self.bucket.get_blob(blob_url)
+    
+    def delete_blob(self, blob_url):
+        self.bucket.blob(blob_url).delete()
 
     def get_documentation(self, doc_id) -> Dict[str, Any] | None:
         document_snapshot = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
@@ -48,6 +51,14 @@ class FirebaseClient:
             self.DOCUMENTATION_COLLECTION,
             doc_id,
             data
+        )
+
+        
+
+    def delete_documentation(self, doc_id: str) -> None:
+        self._delete(
+            self.DOCUMENTATION_COLLECTION, 
+            doc_id
         )
 
     @staticmethod

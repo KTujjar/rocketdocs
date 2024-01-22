@@ -98,6 +98,44 @@ class DocumentationService:
 
         return doc_id
 
+    def update_document_generation_job(
+            self,
+            background_tasks: BackgroundTasks,
+            doc_id: str,
+            model: LlmModelEnum = None
+    ) -> str:
+        doc = self.firebase_client.get_documentation(doc_id)
+        github_url = doc.get("github_url")
+        blob_url = doc.get("bucket_url")
+
+        doc_status = DocsStatusEnum(doc.get("status"))
+
+        if (doc_status == DocsStatusEnum.STARTED):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Data is still being generated for this id, so it cannot be regenerated yet.")
+
+        # reset the bucket and set to started
+        self.firebase_client.update_documentation(
+            doc_id,
+            FirestoreDocumentationUpdateModel(
+                bucket_url=None,
+                status=DocsStatusEnum.STARTED
+            ).model_dump()
+        )
+
+        # delete the blob since we are going to generate and add a new one
+        self.firebase_client.delete_blob(blob_url)
+
+        # add task to be done async
+        background_tasks.add_task(
+            self.generate_documentation_background,
+            doc_id,
+            github_url,
+            model
+        )
+
+        return doc_id
+
+
     def get_documentation_with_content(self, doc_id: str) -> Dict[str, Any]:
         doc = self.firebase_client.get_documentation(doc_id)
         if not doc:
@@ -112,6 +150,22 @@ class DocumentationService:
             doc["content"] = self.firebase_client.get_blob(blob_url).download_as_text()
 
         return doc
+    
+    def delete_documentation(self, doc_id):
+        # get blob url to delete
+        doc = self.firebase_client.get_documentation(doc_id)
+        doc_status = DocsStatusEnum(doc.get("status"))
+
+        if (doc_status == DocsStatusEnum.STARTED):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Data is still being generated for this id, so it cannot be deleted yet.")
+
+        blob_url = doc.get("bucket_url")
+
+        # delete blob first
+        self.firebase_client.delete_blob(blob_url)
+
+        # delete firestore entry
+        self.firebase_client.delete_documentation(doc_id)
 
     @staticmethod
     def _validate_llm_response(llm_response: str) -> str:
