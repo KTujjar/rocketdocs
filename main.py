@@ -5,7 +5,7 @@ import firebase_admin
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import docs
+from routers import docs, repos
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -31,6 +31,7 @@ app.add_middleware(
 
 # Include Routers
 app.include_router(docs.router)
+app.include_router(repos.router)
 
 # Initializing Firebase App
 firebase_app = firebase_admin.initialize_app(

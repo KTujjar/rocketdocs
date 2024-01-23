@@ -1,7 +1,7 @@
 import asyncio
 from typing import Coroutine, List, Any, Dict
 from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationCreateModel, \
-    FirestoreDocumentationUpdateModel, GeneratedDocResponse, LlmModelEnum
+    FirestoreDocumentationUpdateModel, FirestoreRepoCreateModel, GeneratedDocResponse, LlmModelEnum
 from services.clients.firebase_client import FirebaseClient, get_firebase_client
 from fastapi import BackgroundTasks, HTTPException, status
 
@@ -135,7 +135,6 @@ class DocumentationService:
 
         return doc_id
 
-
     def get_documentation_with_content(self, doc_id: str) -> Dict[str, Any]:
         doc = self.firebase_client.get_documentation(doc_id)
         if not doc:
@@ -166,6 +165,17 @@ class DocumentationService:
 
         # delete firestore entry
         self.firebase_client.delete_documentation(doc_id)
+
+    def get_repos_ids_list(self) -> list[str]:
+        repos_iterator = self.firebase_client.get_repos()
+        repos_ids = [repo_snapshot.id for repo_snapshot in repos_iterator]
+
+        return repos_ids
+    
+    def get_repo(self, repo_id) -> FirestoreRepoCreateModel:
+        repo = self.firebase_client.get_repo(repo_id)
+        model = FirestoreRepoCreateModel.model_validate(repo.to_dict())
+        return model
 
     @staticmethod
     def _validate_llm_response(llm_response: str) -> str:
