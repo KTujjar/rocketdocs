@@ -28,8 +28,6 @@ class FirestoreDocumentationUpdateModel(BaseModel):
     status: DocsStatusEnum
 
 
-class RepoModel
-
 class FirestoreRepoCreateModel(BaseModel):
     graph: dict[str, list[str]] | None
     root_doc: str
