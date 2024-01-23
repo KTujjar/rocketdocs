@@ -28,6 +28,8 @@ class FirestoreDocumentationUpdateModel(BaseModel):
     status: DocsStatusEnum
 
 
+class RepoModel
+
 class FirestoreRepoCreateModel(BaseModel):
     graph: dict[str, list[str]] | None
     root_doc: str
@@ -82,7 +84,7 @@ class GetReposResponse(BaseModel):
     repos: list[str]
 
 # GET /repos/{repo_id}
-class RepoModel(BaseModel):
+class GetRepoResponseRepoModel(BaseModel):
     graph: dict[str, list[str]] | None
     root_doc: str
     completion_status: str
