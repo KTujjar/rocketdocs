@@ -67,7 +67,7 @@ class FirebaseClient:
         return repo
 
     def get_repos(self) -> Iterator[DocumentSnapshot]:
-        repos = self.db.collection(self.REPO_COLLECTION).stream()
+        repos = self._list(self.REPO_COLLECTION)
         
         return repos
     

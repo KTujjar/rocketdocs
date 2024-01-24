@@ -166,11 +166,10 @@ class DocumentationService:
         # delete firestore entry
         self.firebase_client.delete_documentation(doc_id)
 
-    def get_repos_ids_list(self) -> list[str]:
-        repos_iterator = self.firebase_client.get_repos()
-        repos_ids = [repo_snapshot.id for repo_snapshot in repos_iterator]
-
-        return repos_ids
+    def get_repos(self) -> list[FirestoreRepoCreateModel]:
+        repos = self.firebase_client.get_repos()
+        models = [FirestoreRepoCreateModel.model_validate(repo.to_dict()) for repo in repos]
+        return models
     
     def get_repo(self, repo_id) -> FirestoreRepoCreateModel:
         repo = self.firebase_client.get_repo(repo_id)
