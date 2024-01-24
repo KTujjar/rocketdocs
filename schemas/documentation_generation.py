@@ -73,10 +73,13 @@ class UpdateFileDocsResponse(BaseModel):
 
 # GET /repos/{repo_id}
 
+class RepoResponseModel(FirestoreRepoCreateModel):
+    id: str
+
 class GetRepoResponse(BaseModel):
-    repo: FirestoreRepoCreateModel
+    repo: RepoResponseModel
 
 # GET /repos
 
 class GetReposResponse(BaseModel):
-    repos: list[FirestoreRepoCreateModel]
+    repos: list[RepoResponseModel]

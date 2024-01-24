@@ -61,15 +61,15 @@ class FirebaseClient:
             doc_id
         )
 
-    def get_repo(self, repo_id) -> DocumentSnapshot:
+    def get_repo(self, repo_id) -> Dict[str, Any]:
         repo = self._get(self.REPO_COLLECTION, repo_id)
         
-        return repo
+        return {**repo.to_dict(), 'id': repo.id}
 
-    def get_repos(self) -> Iterator[DocumentSnapshot]:
+    def get_repos(self) -> Iterator[Dict[str, Any]]:
         repos = self._list(self.REPO_COLLECTION)
-        
-        return repos
+        repos_dicts = [{**repo.to_dict(), 'id': repo.id} for repo in repos]
+        return repos_dicts
     
     @staticmethod
     def get_blob_url(blob_name, folder="repo") -> str:

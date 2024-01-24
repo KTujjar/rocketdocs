@@ -1,7 +1,7 @@
 import asyncio
 from typing import Coroutine, List, Any, Dict
 from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationCreateModel, \
-    FirestoreDocumentationUpdateModel, FirestoreRepoCreateModel, GeneratedDocResponse, LlmModelEnum
+    FirestoreDocumentationUpdateModel, FirestoreRepoCreateModel, RepoResponseModel, GeneratedDocResponse, LlmModelEnum
 from services.clients.firebase_client import FirebaseClient, get_firebase_client
 from fastapi import BackgroundTasks, HTTPException, status
 
@@ -166,14 +166,14 @@ class DocumentationService:
         # delete firestore entry
         self.firebase_client.delete_documentation(doc_id)
 
-    def get_repos(self) -> list[FirestoreRepoCreateModel]:
-        repos = self.firebase_client.get_repos()
-        models = [FirestoreRepoCreateModel.model_validate(repo.to_dict()) for repo in repos]
+    def get_repos(self) -> list[RepoResponseModel]:
+        repos_dicts = self.firebase_client.get_repos()
+        models = [RepoResponseModel.model_validate(repo_dict) for repo_dict in repos_dicts]
         return models
     
-    def get_repo(self, repo_id) -> FirestoreRepoCreateModel:
-        repo = self.firebase_client.get_repo(repo_id)
-        model = FirestoreRepoCreateModel.model_validate(repo.to_dict())
+    def get_repo(self, repo_id) -> RepoResponseModel:
+        repo_dict = self.firebase_client.get_repo(repo_id)
+        model = RepoResponseModel.model_validate(repo_dict)
         return model
 
     @staticmethod
