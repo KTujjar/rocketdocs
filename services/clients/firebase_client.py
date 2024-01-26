@@ -17,7 +17,7 @@ class FirebaseClient:
         self.bucket = storage.bucket()
         self.db: Client = firestore.client()
 
-    def add_blob(self, blob_url, data):
+    def add_blob(self, blob_url, data: str):
         blob = self.bucket.blob(blob_url)
         blob.upload_from_string(data)
 

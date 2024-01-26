@@ -9,13 +9,15 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import HTTPException, status
 
+from schemas.documentation_generation import GitHubFile
+
 
 class GitHubClient:
     def __init__(self, token: Optional[str] = None):
         self.token = token
         self.repos_api_url = "https://api.github.com/repos/"
 
-    def read_file(self, github_url: str) -> str:
+    def read_file(self, github_url: str) -> GitHubFile:
         username, repo_name, file_path = self.extract_github_info(github_url)
 
         headers = {}
@@ -26,19 +28,19 @@ class GitHubClient:
         request = requests.get(url, headers)
         request.raise_for_status()
 
-        data = request.json()
+        data = GitHubFile(**request.json())
         if "type" in data and data["type"] == "dir":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail=f"{github_url} is not a file.")
 
-        file_content = data["content"]
-        file_content_encoding = data.get('encoding')
-        if file_content_encoding == 'base64':
+        file_content = data.content
+        if data.encoding == 'base64':
             file_content = base64.b64decode(file_content).decode()
         else:
             raise RuntimeError("Could not decode file content")
 
-        return file_content
+        data.content = file_content
+        return data
 
     @staticmethod
     def extract_github_info(github_url):

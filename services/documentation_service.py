@@ -1,7 +1,15 @@
 import asyncio
+import json
+import os
 from typing import Coroutine, List, Any, Dict
+
+import firebase_admin
+from openai.types.chat import ChatCompletion
+
 from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationCreateModel, \
-    FirestoreDocumentationUpdateModel, GeneratedDocResponse, LlmModelEnum
+    FirestoreDocumentationUpdateModel, GeneratedDoc, LlmModelEnum, LlmProvider, \
+    LlmDocSchema, BlobDoc, GitHubFile
+from services.clients.anyscale_client import get_anyscale_client
 from services.clients.firebase_client import FirebaseClient, get_firebase_client
 from fastapi import BackgroundTasks, HTTPException, status
 
@@ -11,13 +19,13 @@ from services.clients.llm_client import LLMClient
 from services.clients.openai_client import get_openai_client
 from services.clients.github_client import GitHubClient, get_github_client
 
-SYSTEM_PROMPT_FOR_FILES = """
-Your job is to provide very high-level documentation of code provided to you.
-    
-You will respond in Markdown format, with the following sections:
-## Description: (a string less than 100 words)
-## Insights: ([string, string, string])
-"""
+SYSTEM_PROMPT_FOR_FILES = "Your job is to provide very high-level documentation of code provided to you. " + \
+                          "You will respond in Markdown format, with the following sections:" + \
+                          "\n## Description: (a string less than 100 words)" + \
+                          "\n## Insights: ([string, string, string])"
+
+SYSTEM_PROMPT_FOR_FILES_JSON = "You are a helpful assistant that summarizes a code's purpose at a high level. " + \
+                               "You will respond in JSON format, with strings formatted in Markdown."
 
 
 class DocumentationService:
@@ -26,99 +34,122 @@ class DocumentationService:
         self.github_client = github_client
         self.firebase_client = firebase_client
         self.system_prompt_for_file = SYSTEM_PROMPT_FOR_FILES
+        self.system_prompt_for_file_json = SYSTEM_PROMPT_FOR_FILES_JSON
 
     async def generate_doc_for_github_file(
             self,
-            file_url: str,
-            model: LlmModelEnum = LlmModelEnum.MIXTRAL
-    ):
-        if not file_url:
+            github_file: GitHubFile,
+            model: LlmModelEnum
+    ) -> GeneratedDoc:
+        if not github_file:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="File url cannot be empty")
+                                detail="File cannot be empty")
 
-        file_content = self.github_client.read_file(file_url)
+        user_prompt = f"{github_file.path}:\n" + github_file.content
 
-        user_prompt = "Here is the code: \n" + file_content
-
-        llm_response = await self.llm_client.generate_text(
+        llm_completion: ChatCompletion = await self.llm_client.generate_json(
             model=model,
             prompt=user_prompt,
-            system_prompt=self.system_prompt_for_file,
-            max_tokens=500
+            system_prompt=self.system_prompt_for_file_json,
+            response_schema=LlmDocSchema.model_json_schema(),
+            max_tokens=2048
         )
 
-        validated_response = self._validate_llm_response(llm_response)
+        raw_content = llm_completion.choices[0].message.content
+        usage = llm_completion.usage
+        json_content = self._validate_json(raw_content)
+        if not json_content:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                detail="LLM output not parsable")
 
-        response = GeneratedDocResponse(content=validated_response)
+        response = GeneratedDoc(
+            relative_path=github_file.path,
+            raw_content=raw_content,
+            usage=usage,
+            description=json_content["description"],
+            insights=json_content["insights"]
+        )
 
         return response
 
     # background tasks for generating the documentation
-    def generate_documentation_background(
+    def generate_doc_background_task(
             self,
             firebase_file_id: str,
-            github_url: str,
-            model: LlmModelEnum = None
-    ):
-        generated_docs = asyncio.run(self.generate_doc_for_github_file(github_url, model))
+            github_file: GitHubFile,
+            model: LlmModelEnum
+    ) -> None:
+        generated_doc = asyncio.run(self.generate_doc_for_github_file(github_file, model))
 
+        blob_doc = BlobDoc(**generated_doc.model_dump())
         blob_url = self.firebase_client.get_blob_url(firebase_file_id)
-
-        self.firebase_client.add_blob(blob_url, generated_docs.content)
+        self.firebase_client.add_blob(blob_url, json.dumps(blob_doc.model_dump()))
 
         self.firebase_client.update_documentation(
             firebase_file_id,
             FirestoreDocumentationUpdateModel(
                 bucket_url=blob_url,
-                status=DocsStatusEnum.COMPLETED
+                status=DocsStatusEnum.COMPLETED,
+                relative_path=generated_doc.relative_path,
+                usage=generated_doc.usage
             ).model_dump()
         )
 
-    def create_document_generation_job(
+    def enqueue_generate_doc_job(
             self,
             background_tasks: BackgroundTasks,
             github_url: str,
-            model: LlmModelEnum = None
+            model: LlmModelEnum
     ) -> str:
+        github_file: GitHubFile = self.github_client.read_file(github_url)
+
         doc_id = self.firebase_client.add_documentation(
             FirestoreDocumentationCreateModel(
                 github_url=github_url,
                 bucket_url=None,
+                relative_path=github_file.path,
                 status=DocsStatusEnum.STARTED
             ).model_dump()
         )
 
         # add task to be done async
         background_tasks.add_task(
-            self.generate_documentation_background,
+            self.generate_doc_background_task,
             doc_id,
-            github_url,
+            github_file,
             model
         )
 
         return doc_id
 
-    def update_document_generation_job(
+    def regenerate_doc(
             self,
             background_tasks: BackgroundTasks,
             doc_id: str,
-            model: LlmModelEnum = None
+            model: LlmModelEnum
     ) -> str:
         doc = self.firebase_client.get_documentation(doc_id)
         github_url = doc.get("github_url")
         blob_url = doc.get("bucket_url")
+        usage = doc.get("usage")
+        relative_path = doc.get("relative_path")
 
         doc_status = DocsStatusEnum(doc.get("status"))
 
-        if (doc_status == DocsStatusEnum.STARTED):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Data is still being generated for this id, so it cannot be regenerated yet.")
+        if doc_status == DocsStatusEnum.STARTED:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Data is still being generated for this id, so it cannot be regenerated yet.")
+
+        github_file = self.github_client.read_file(github_url)
 
         # reset the bucket and set to started
         self.firebase_client.update_documentation(
             doc_id,
             FirestoreDocumentationUpdateModel(
                 bucket_url=None,
-                status=DocsStatusEnum.STARTED
+                status=DocsStatusEnum.STARTED,
+                usage=usage,
+                relative_path=relative_path
             ).model_dump()
         )
 
@@ -127,16 +158,15 @@ class DocumentationService:
 
         # add task to be done async
         background_tasks.add_task(
-            self.generate_documentation_background,
+            self.generate_doc_background_task,
             doc_id,
-            github_url,
+            github_file,
             model
         )
 
         return doc_id
 
-
-    def get_documentation_with_content(self, doc_id: str) -> Dict[str, Any]:
+    def get_doc_with_content(self, doc_id: str) -> Dict[str, Any]:
         doc = self.firebase_client.get_documentation(doc_id)
         if not doc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Documentation {doc_id} not found")
@@ -147,17 +177,20 @@ class DocumentationService:
         # if it is completed get the content, otherwise return None
         doc["content"] = None
         if doc_status == DocsStatusEnum.COMPLETED:
-            doc["content"] = self.firebase_client.get_blob(blob_url).download_as_text()
+            blob_doc_raw = json.loads(self.firebase_client.get_blob(blob_url).download_as_text())
+            blob_doc = BlobDoc(**blob_doc_raw)
+            doc["content"] = blob_doc
 
         return doc
-    
-    def delete_documentation(self, doc_id):
+
+    def delete_doc(self, doc_id):
         # get blob url to delete
         doc = self.firebase_client.get_documentation(doc_id)
         doc_status = DocsStatusEnum(doc.get("status"))
 
-        if (doc_status == DocsStatusEnum.STARTED):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Data is still being generated for this id, so it cannot be deleted yet.")
+        if doc_status == DocsStatusEnum.STARTED:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Data is still being generated for this id, so it cannot be deleted yet.")
 
         blob_url = doc.get("bucket_url")
 
@@ -168,10 +201,12 @@ class DocumentationService:
         self.firebase_client.delete_documentation(doc_id)
 
     @staticmethod
-    def _validate_llm_response(llm_response: str) -> str:
-        if llm_response[0] == " ":
-            return llm_response[1:]
-        return llm_response
+    def _validate_json(json_string: str) -> Dict[str, Any] | None:
+        try:
+            parsed_json = json.loads(json_string)
+            return parsed_json
+        except json.JSONDecodeError:
+            return None
 
     @staticmethod
     async def _run_concurrently(coroutines: List[Coroutine]) -> tuple[BaseException | Any]:
@@ -186,15 +221,19 @@ class DocumentationService:
 
 def get_documentation_service() -> DocumentationService:
     """Initializes the service with any dependencies it needs."""
-    openai_client = get_openai_client()
+    llm_client = get_anyscale_client()
     github_client = get_github_client()
     firebase_client = get_firebase_client()
-    return DocumentationService(openai_client, github_client, firebase_client)
+    return DocumentationService(llm_client, github_client, firebase_client)
 
 
 # For manually testing this file
 if __name__ == "__main__":
     load_dotenv()
+    firebase_app = firebase_admin.initialize_app(
+        credential=None,
+        options={"storageBucket": os.getenv("CLOUD_STORAGE_BUCKET")}
+    )
     service = get_documentation_service()
 
     # Example of running the service once
