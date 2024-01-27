@@ -2,13 +2,14 @@ import asyncio
 import json
 import os
 from typing import Coroutine, List, Any, Dict
+from collections import deque
 
 import firebase_admin
 from openai.types.chat import ChatCompletion
 
 from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationCreateModel, \
     FirestoreDocumentationUpdateModel, FirestoreRepoCreateModel, RepoResponseModel, LlmModelEnum, GeneratedDoc, LlmModelEnum, LlmProvider, \
-    LlmDocSchema, BlobDoc, GitHubFile
+    LlmDocSchema, BlobDoc, GitHubFile, RepoFormatted, RepoNode, FirestoreRepoDocModel
 from services.clients.anyscale_client import get_anyscale_client
 from services.clients.firebase_client import FirebaseClient, get_firebase_client
 from fastapi import BackgroundTasks, HTTPException, status
@@ -208,7 +209,58 @@ class DocumentationService:
     def get_repo(self, repo_id) -> RepoResponseModel:
         repo_dict = self.firebase_client.get_repo(repo_id)
         model = RepoResponseModel.model_validate(repo_dict)
+
+        self._format_repo(model)
         return model
+    
+    @staticmethod
+    def _format_repo(repo_response: RepoResponseModel) -> RepoFormatted:
+        root_doc: FirestoreRepoDocModel = repo_response.root_doc
+        repo_name = repo_response.repo_name
+        dependencies: dict[str, str] = repo_response.dependencies
+        docs = repo_response.docs
+
+       
+
+        repo_formatted = RepoFormatted(repo_name=repo_name, tree=[], nodes_map={})
+
+        used = set()
+
+        def find_doc_by_id(docs: list[FirestoreRepoDocModel], id) -> FirestoreRepoDocModel:
+            for doc in docs:
+                if doc.id == id:
+                    return doc
+            return None
+
+
+        def process_node(parent_id, child_id):
+            parent_data: FirestoreRepoDocModel = find_doc_by_id(docs, parent_id) 
+            child_data: FirestoreRepoDocModel = find_doc_by_id(docs, child_id) 
+
+            repo_formatted.insert_node(parent_data, child_data)
+       
+
+        def bfs(root):
+            if not root:
+                return
+            
+            queue = deque([root])
+
+            while queue:
+                node = queue.popleft()
+                
+                for child, parent in dependencies.items():
+                    if parent == node and child not in used:
+                        process_node(parent, child)
+                        queue.append(child)
+                        used.add(child)
+
+
+        bfs(root_doc.id)
+        print(repo_formatted)
+
+
+
 
     @staticmethod
     def _validate_json(json_string: str) -> Dict[str, Any] | None:

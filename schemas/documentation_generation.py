@@ -3,6 +3,7 @@ from typing import Dict, Any, List
 from openai.types import CompletionUsage
 from pydantic import BaseModel, constr, conlist, ValidationError
 from enum import Enum
+import json
 
 class LlmProvider(str, Enum):
     OPEN_AI = 'OPEN_AI'
@@ -19,6 +20,10 @@ class LlmModelEnum(str, Enum):
 class DocsStatusEnum(str, Enum):
     STARTED = 'STARTED'
     COMPLETED = 'COMPLETED'
+
+class RepoNodeType(str, Enum):
+    FILE = 'FILE'
+    FOLDER = 'FOLDER'
 
 
 class GeneratedDoc(BaseModel):
@@ -57,12 +62,18 @@ class FirestoreDocumentationUpdateModel(BaseModel):
     relative_path: str
     usage: CompletionUsage
 
+class FirestoreRepoDocModel(BaseModel):
+    id: str
+    path: str
+    status: DocsStatusEnum
+    type: RepoNodeType
 
 class FirestoreRepoCreateModel(BaseModel):
-    graph: dict[str, list[str]]
-    root_doc: str
-    status: dict[str, DocsStatusEnum]
+    dependencies: dict[str, str]
+    root_doc: FirestoreRepoDocModel       # {id: "doc_id_1", path: "/README.md", status: "COMPLETED"}
+    docs: list[FirestoreRepoDocModel]     # [{id: "doc_id_1", path: "/README.md", status: "COMPLETED"}, {id: "doc_id_2", path: "/README2.md", status: "STARTED"}]
     version: str # commitId
+    repo_name: str
 
 
 # POST /file-docs
@@ -138,3 +149,51 @@ class GetRepoResponse(BaseModel):
 
 class GetReposResponse(BaseModel):
     repos: list[RepoResponseModel]
+
+# repo tree
+    
+class RepoNode(BaseModel):
+    id: str
+    name: str
+    type: RepoNodeType
+    completion_status: DocsStatusEnum
+    children: list['RepoNode'] = []
+
+
+
+class RepoFormatted(BaseModel):
+    repo_name: str
+    tree: list[RepoNode]
+    nodes_map: dict[str, RepoNode] # id to RepoNode
+
+    def insert_node(self, 
+        parent: FirestoreRepoDocModel, 
+        child: FirestoreRepoDocModel,
+        
+    ) -> RepoNode:
+        if parent.id in self.nodes_map.keys():
+            child_node = RepoNode(id=child.id, name=child.id, type=child.type, completion_status=child.status, children=[]) # place holder type and status
+            self.nodes_map[parent.id].children.append(child_node)
+            self.nodes_map[child.id] = child_node
+        else:
+            # should only happen for root?
+            child_node = RepoNode(id=child.id, name=child.id, type=child.type, completion_status=child.status, children=[]) # place holder type and status
+            parent_node = RepoNode(id=parent.id, name=parent.id, type=parent.type, completion_status=parent.status, children=[child_node]) # place holder type and status
+            self.nodes_map[parent.id] = parent_node
+            self.nodes_map[child.id] = child_node
+            self.tree.append(parent_node)
+
+    def __str__(self):
+        data_dict = self
+
+        def custom_encoder(obj):
+            if isinstance(obj, (RepoNode, RepoFormatted)):
+                return obj.dict()
+            else:
+                return str(obj)
+    
+        # Convert the dictionary to a JSON string
+        json_str = json.dumps(data_dict, indent=2, default=custom_encoder)
+
+
+        return json_str
