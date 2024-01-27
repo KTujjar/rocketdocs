@@ -126,29 +126,6 @@ class GitHubFile(BaseModel):
     content: str
     encoding: str
 
-
-# LLM Generation Models
-
-class LlmDocSchema(BaseModel):
-    description: str
-    insights: List[str]
-
-
-# GitHub Models
-
-class GitHubFile(BaseModel):
-    name: str
-    path: str
-    sha: str
-    size: int
-    url: str
-    html_url: str
-    git_url: str
-    download_url: str
-    type: str
-    content: str
-    encoding: str
-
 # GET /repos/{repo_id}
 
 class RepoResponseModel(FirestoreRepoCreateModel):
