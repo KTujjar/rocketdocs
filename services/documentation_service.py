@@ -220,11 +220,7 @@ class DocumentationService:
         dependencies: dict[str, str] = repo_response.dependencies
         docs = repo_response.docs
 
-       
-
         repo_formatted = RepoFormatted(repo_name=repo_name, tree=[], nodes_map={})
-
-        used = set()
 
         def find_doc_by_id(docs: list[FirestoreRepoDocModel], id) -> FirestoreRepoDocModel:
             for doc in docs:
@@ -232,14 +228,13 @@ class DocumentationService:
                     return doc
             return None
 
-
         def process_node(parent_id, child_id):
             parent_data: FirestoreRepoDocModel = find_doc_by_id(docs, parent_id) 
             child_data: FirestoreRepoDocModel = find_doc_by_id(docs, child_id) 
 
             repo_formatted.insert_node(parent_data, child_data)
        
-
+        used = set()
         def bfs(root):
             if not root:
                 return
