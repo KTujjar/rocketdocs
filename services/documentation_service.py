@@ -203,22 +203,22 @@ class DocumentationService:
 
     def get_repos(self) -> list[RepoResponseModel]:
         repos_dicts = self.firebase_client.get_repos()
-        models = [RepoResponseModel.model_validate(repo_dict) for repo_dict in repos_dicts]
-        return models
+        repos = [RepoResponseModel.model_validate(repo_dict) for repo_dict in repos_dicts]
+        repos_formatted = [self._format_repo(repo) for repo in repos]
+        return repos_formatted
     
-    def get_repo(self, repo_id) -> RepoResponseModel:
+    def get_repo(self, repo_id) -> RepoFormatted:
         repo_dict = self.firebase_client.get_repo(repo_id)
-        model = RepoResponseModel.model_validate(repo_dict)
-
-        self._format_repo(model)
-        return model
+        repo = RepoResponseModel.model_validate(repo_dict)
+        repo_formatted = self._format_repo(repo)
+        return repo_formatted
     
     @staticmethod
     def _format_repo(repo_response: RepoResponseModel) -> RepoFormatted:
         root_doc: FirestoreRepoDocModel = repo_response.root_doc
-        repo_name = repo_response.repo_name
+        repo_name: str = repo_response.repo_name
         dependencies: dict[str, str] = repo_response.dependencies
-        docs = repo_response.docs
+        docs: list[FirestoreRepoDocModel] = repo_response.docs
 
         repo_formatted = RepoFormatted(repo_name=repo_name, tree=[], nodes_map={})
 
@@ -234,8 +234,9 @@ class DocumentationService:
 
             repo_formatted.insert_node(parent_data, child_data)
        
-        used = set()
         def bfs(root):
+            used = set()
+
             if not root:
                 return
             
@@ -243,16 +244,15 @@ class DocumentationService:
 
             while queue:
                 node = queue.popleft()
-                
                 for child, parent in dependencies.items():
                     if parent == node and child not in used:
                         process_node(parent, child)
                         queue.append(child)
                         used.add(child)
 
-
         bfs(root_doc.id)
-        print(repo_formatted)
+
+        return repo_formatted
 
 
 

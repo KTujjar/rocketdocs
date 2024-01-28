@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 
 from openai.types import CompletionUsage
-from pydantic import BaseModel, constr, conlist, ValidationError
+from pydantic import BaseModel, constr, conlist, ValidationError, Field
 from enum import Enum
 import json
 
@@ -64,6 +64,7 @@ class FirestoreDocumentationUpdateModel(BaseModel):
 
 class FirestoreRepoDocModel(BaseModel):
     id: str
+    name: str
     path: str
     status: DocsStatusEnum
     type: RepoNodeType
@@ -137,19 +138,6 @@ class GitHubFile(BaseModel):
     content: str
     encoding: str
 
-# GET /repos/{repo_id}
-
-class RepoResponseModel(FirestoreRepoCreateModel):
-    id: str
-
-class GetRepoResponse(BaseModel):
-    repo: RepoResponseModel
-
-# GET /repos
-
-class GetReposResponse(BaseModel):
-    repos: list[RepoResponseModel]
-
 # repo tree
     
 class RepoNode(BaseModel):
@@ -164,21 +152,20 @@ class RepoNode(BaseModel):
 class RepoFormatted(BaseModel):
     repo_name: str
     tree: list[RepoNode]
-    nodes_map: dict[str, RepoNode] # id to RepoNode
+    nodes_map: dict[str, RepoNode] = Field(exclude=True) # id to RepoNode
 
     def insert_node(self, 
         parent: FirestoreRepoDocModel, 
         child: FirestoreRepoDocModel,
-        
     ) -> RepoNode:
         if parent.id in self.nodes_map.keys():
-            child_node = RepoNode(id=child.id, name=child.id, type=child.type, completion_status=child.status, children=[]) # place holder type and status
+            child_node = RepoNode(id=child.id, name=child.name, type=child.type, completion_status=child.status, children=[]) # place holder type and status
             self.nodes_map[parent.id].children.append(child_node)
             self.nodes_map[child.id] = child_node
         else:
-            # should only happen for root?
-            child_node = RepoNode(id=child.id, name=child.id, type=child.type, completion_status=child.status, children=[]) # place holder type and status
-            parent_node = RepoNode(id=parent.id, name=parent.id, type=parent.type, completion_status=parent.status, children=[child_node]) # place holder type and status
+            # should only happen for root
+            child_node = RepoNode(id=child.id, name=child.name, type=child.type, completion_status=child.status, children=[]) # place holder type and status
+            parent_node = RepoNode(id=parent.id, name=parent.name, type=parent.type, completion_status=parent.status, children=[child_node]) # place holder type and status
             self.nodes_map[parent.id] = parent_node
             self.nodes_map[child.id] = child_node
             self.tree.append(parent_node)
@@ -188,7 +175,7 @@ class RepoFormatted(BaseModel):
 
         def custom_encoder(obj):
             if isinstance(obj, (RepoNode, RepoFormatted)):
-                return obj.dict()
+                return obj.model_dump()
             else:
                 return str(obj)
     
@@ -197,3 +184,18 @@ class RepoFormatted(BaseModel):
 
 
         return json_str
+    
+
+
+# GET /repos/{repo_id}
+
+class RepoResponseModel(FirestoreRepoCreateModel):
+    id: str
+
+class GetRepoResponse(BaseModel):
+    repo: RepoFormatted
+
+# GET /repos
+
+class GetReposResponse(BaseModel):
+    repos: list[RepoFormatted]
