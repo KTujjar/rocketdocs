@@ -150,7 +150,8 @@ class RepoNode(BaseModel):
 
 
 class RepoFormatted(BaseModel):
-    repo_name: str
+    name: str
+    id: str
     tree: list[RepoNode]
     nodes_map: dict[str, RepoNode] = Field(exclude=True) # id to RepoNode
 
@@ -197,5 +198,10 @@ class GetRepoResponse(BaseModel):
 
 # GET /repos
 
+class ReposResponseModel(BaseModel):
+    name: str
+    id: str
+    status: list[dict[str, DocsStatusEnum]]
+
 class GetReposResponse(BaseModel):
-    repos: list[RepoFormatted]
+    repos: list[ReposResponseModel]

@@ -21,7 +21,7 @@ async def get_repos(
 
 # for now returns all repos
 @router.get("/repos/{repo_id}")
-async def get_repos(
+async def get_repo(
         repo_id: str,
         documentation_service: DocumentationService = Depends(get_documentation_service),
         user: Dict[str, Any] = Depends(get_user_token),
