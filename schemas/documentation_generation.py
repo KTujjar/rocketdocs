@@ -1,13 +1,8 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from openai.types import CompletionUsage
-from pydantic import BaseModel, constr, conlist, ValidationError
+from pydantic import BaseModel, constr, conlist, ValidationError, Field
 from enum import Enum
-
-
-class LlmProvider(str, Enum):
-    OPEN_AI = 'OPEN_AI'
-    ANYSCALE = 'ANYSCALE'
 
 
 class LlmModelEnum(str, Enum):
@@ -26,37 +21,52 @@ class GeneratedDoc(BaseModel):
     relative_path: str
     raw_content: str
     usage: CompletionUsage
-    description: str | None
-    insights: List[str] | None
+    extracted_data: Dict[str, Any]
+    markdown_content: str
 
 
 # Blob storage objects
 
-class BlobDoc(BaseModel):
-    description: str
-    insights: List[str]
-
-    def to_markdown(self):
-        markdown_output = f"## Description\n{self.description}\n## Insights\n"
-
-        for i, insight in enumerate(self.insights, start=1):
-            markdown_output += f"{i}. {insight}\n"
-
-        return markdown_output
-
-
-class FirestoreDocumentationCreateModel(BaseModel):
-    bucket_url: str | None
-    github_url: str
-    relative_path: str
-    status: DocsStatusEnum
+# class BlobDoc(BaseModel):
+#     description: str
+#     insights: List[str]
+#
+#     def to_markdown(self):
+#         markdown_output = f"## Description\n{self.description}\n## Insights\n"
+#
+#         for i, insight in enumerate(self.insights, start=1):
+#             markdown_output += f"{i}. {insight}\n"
+#
+#         return markdown_output
 
 
-class FirestoreDocumentationUpdateModel(BaseModel):
-    bucket_url: str | None
-    status: DocsStatusEnum
-    relative_path: str
-    usage: CompletionUsage
+# class FirestoreDocumentationCreateModel(BaseModel):
+#     bucket_url: str | None
+#     github_url: str
+#     relative_path: str
+#     status: DocsStatusEnum
+#
+#
+# class FirestoreDocumentationUpdateModel(BaseModel):
+#     bucket_url: str | None
+#     status: DocsStatusEnum
+#     relative_path: str
+#     usage: CompletionUsage
+
+
+class FirestoreDoc(BaseModel):
+    github_url: Optional[str] = None
+    relative_path: Optional[str] = None
+    type: Optional[str] = None
+    size: Optional[int] = None
+    extracted_data: Optional[Dict[str, Any]] = None
+    markdown_content: Optional[str] = None
+    usage: Optional[CompletionUsage] = None
+    status: Optional[DocsStatusEnum] = None
+    # extracted_data: Dict[str, Any] | None = None
+    # markdown_content: str | None = None
+    # usage: CompletionUsage | None = None
+    # status: DocsStatusEnum | None = None
 
 
 # POST /file-docs
@@ -77,7 +87,7 @@ class GetFileDocsResponse(BaseModel):
     github_url: str
     status: str
     relative_path: str
-    content: str | None
+    markdown_content: str | None
 
 
 # DELETE /file-docs/{id}
@@ -89,10 +99,6 @@ class DeleteFileDocsResponse(BaseModel):
 
 # UPDATE /file-docs/{id}
 
-# class UpdateFileDocsRequest(BaseModel):
-#     model: LlmModelEnum = LlmModelEnum.MIXTRAL
-
-
 class UpdateFileDocsResponse(BaseModel):
     message: str
     id: str
@@ -101,21 +107,21 @@ class UpdateFileDocsResponse(BaseModel):
 # LLM Generation Models
 
 class LlmDocSchema(BaseModel):
-    description: str
-    insights: List[str]
+    description: str = Field("Around 100 words about the code's purpose")
+    dependencies: List[str] = Field("Outside dependencies the code uses")
 
 
 # GitHub Models
 
-class GitHubFile(BaseModel):
-    name: str
-    path: str
-    sha: str
-    size: int
-    url: str
-    html_url: str
-    git_url: str
-    download_url: str
-    type: str
-    content: str
-    encoding: str
+# class GitHubFile(BaseModel):
+#     name: str
+#     path: str
+#     sha: str
+#     size: int
+#     url: str
+#     html_url: str
+#     git_url: str
+#     download_url: str
+#     type: str
+#     content: str
+#     encoding: str
