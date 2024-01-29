@@ -8,10 +8,12 @@ from google.cloud.firestore_v1 import DocumentReference
 from google.cloud.firestore_v1.base_document import DocumentSnapshot
 from google.cloud.firestore_v1.client import Client
 from google.cloud.storage import Blob
+from typing import Iterator
 
 
 class FirebaseClient:
     DOCUMENTATION_COLLECTION = "documentation"
+    REPO_COLLECTION = "repos"
 
     def __init__(self):
         self.bucket = storage.bucket()
@@ -53,14 +55,22 @@ class FirebaseClient:
             data
         )
 
-        
-
     def delete_documentation(self, doc_id: str) -> None:
         self._delete(
             self.DOCUMENTATION_COLLECTION, 
             doc_id
         )
 
+    def get_repo(self, repo_id) -> Dict[str, Any]:
+        repo = self._get(self.REPO_COLLECTION, repo_id)
+        
+        return {**repo.to_dict(), 'id': repo.id}
+
+    def get_repos(self) -> Iterator[Dict[str, Any]]:
+        repos = self._list(self.REPO_COLLECTION)
+        repos_dicts = [{**repo.to_dict(), 'id': repo.id} for repo in repos]
+        return repos_dicts
+    
     @staticmethod
     def get_blob_url(blob_name, folder="repo") -> str:
         return f"{folder}/{blob_name}"

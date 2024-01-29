@@ -2,13 +2,14 @@ import asyncio
 import json
 import os
 from typing import Coroutine, List, Any, Dict
+from collections import deque
 
 import firebase_admin
 from openai.types.chat import ChatCompletion
 
 from schemas.documentation_generation import DocsStatusEnum, FirestoreDocumentationCreateModel, \
-    FirestoreDocumentationUpdateModel, GeneratedDoc, LlmModelEnum, LlmProvider, \
-    LlmDocSchema, BlobDoc, GitHubFile
+    FirestoreDocumentationUpdateModel, FirestoreRepoCreateModel, RepoResponseModel, LlmModelEnum, GeneratedDoc, LlmModelEnum, LlmProvider, \
+    LlmDocSchema, BlobDoc, GitHubFile, RepoFormatted, RepoNode, FirestoreRepoDocModel, GetReposResponse, ReposResponseModel
 from services.clients.anyscale_client import get_anyscale_client
 from services.clients.firebase_client import FirebaseClient, get_firebase_client
 from fastapi import BackgroundTasks, HTTPException, status
@@ -199,6 +200,68 @@ class DocumentationService:
 
         # delete firestore entry
         self.firebase_client.delete_documentation(doc_id)
+
+    def get_repos(self) -> list[ReposResponseModel]:
+        repos_dicts = self.firebase_client.get_repos()
+        repos = [RepoResponseModel.model_validate(repo_dict) for repo_dict in repos_dicts]
+        repos_formatted = [ReposResponseModel(name=repo.repo_name, id=repo.id, status=self._get_repo_status(repo)) for repo in repos]
+
+        return repos_formatted
+    
+    def get_repo(self, repo_id) -> RepoFormatted:
+        repo_dict = self.firebase_client.get_repo(repo_id)
+        repo = RepoResponseModel.model_validate(repo_dict)
+        repo_formatted = self._format_repo(repo)
+        return repo_formatted
+    
+    @staticmethod
+    def _format_repo(repo_response: RepoResponseModel) -> RepoFormatted:
+        root_doc: FirestoreRepoDocModel = repo_response.root_doc
+        repo_name: str = repo_response.repo_name
+        repo_id: str = repo_response.id
+        dependencies: dict[str, str] = repo_response.dependencies
+        docs: list[FirestoreRepoDocModel] = repo_response.docs
+
+        repo_formatted = RepoFormatted(name=repo_name, id=repo_id, tree=[], nodes_map={})
+
+        def find_doc_by_id(docs: list[FirestoreRepoDocModel], id) -> FirestoreRepoDocModel:
+            for doc in docs:
+                if doc.id == id:
+                    return doc
+            return None
+
+        def process_node(parent_id, child_id):
+            parent_data: FirestoreRepoDocModel = find_doc_by_id(docs, parent_id) 
+            child_data: FirestoreRepoDocModel = find_doc_by_id(docs, child_id) 
+
+            repo_formatted.insert_node(parent_data, child_data)
+       
+        def bfs(root):
+            used = set()
+
+            if not root:
+                return
+            
+            queue = deque([root])
+
+            while queue:
+                node = queue.popleft()
+                for child, parent in dependencies.items():
+                    if parent == node and child not in used:
+                        process_node(parent, child)
+                        queue.append(child)
+                        used.add(child)
+
+        bfs(root_doc.id)
+
+        return repo_formatted
+
+    @staticmethod
+    def _get_repo_status(repo_response: RepoResponseModel) -> list[dict[str, DocsStatusEnum]]:
+        docs = repo_response.docs
+
+        repo_status = [{doc.id: doc.status} for doc in docs]
+        return repo_status
 
     @staticmethod
     def _validate_json(json_string: str) -> Dict[str, Any] | None:
