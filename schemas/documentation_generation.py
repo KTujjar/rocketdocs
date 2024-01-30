@@ -1,5 +1,7 @@
+import uuid
 from typing import Dict, Any, List, Optional
 
+from google.cloud.firestore_v1 import DocumentReference
 from openai.types import CompletionUsage
 from pydantic import BaseModel, constr, conlist, ValidationError, Field
 from enum import Enum
@@ -13,6 +15,15 @@ class LlmModelEnum(str, Enum):
     LLAMA_7B = 'meta-llama/Llama-2-7b-chat-hf'
 
 
+class GeneratedDoc(BaseModel):
+    relative_path: str
+    usage: CompletionUsage
+    extracted_data: Dict[str, Any]
+    markdown_content: str
+
+
+# Firestore Models
+
 class DocStatusEnum(str, Enum):
     NOT_STARTED = 'NOT STARTED'
     IN_PROGRESS = 'IN PROGRESS'
@@ -23,13 +34,6 @@ class DocStatusEnum(str, Enum):
 class FirestoreDocType(str, Enum):
     FILE = 'file'
     DIRECTORY = 'dir'
-
-
-class GeneratedDoc(BaseModel):
-    relative_path: str
-    usage: CompletionUsage
-    extracted_data: Dict[str, Any]
-    markdown_content: str
 
 
 class FirestoreDoc(BaseModel):
@@ -47,10 +51,24 @@ class FirestoreDoc(BaseModel):
 class FirestoreRepo(BaseModel):
     id: Optional[str] = None
     dependencies: Optional[Dict[str, str | None]] = None
-    root_doc: Optional[FirestoreDoc] = None  # {id: "doc_id_1", path: "/README.md", status: "COMPLETED"}
-    docs: Optional[List[FirestoreDoc]] = None  # [{id: "doc_id_1", path: "/README.md", status: "COMPLETED"}, {id: "doc_id_2", path: "/README2.md", status: "STARTED"}]
+    root_doc: Optional[str] = None  # {id: "doc_id_1", path: "/README.md", status: "COMPLETED"}
+    docs: Optional[List[
+        FirestoreDoc]] = None  # [{id: "doc_id_1", path: "/README.md", status: "COMPLETED"}, {id: "doc_id_2", path: "/README2.md", status: "STARTED"}]
     version: Optional[str] = None  # commitId
     repo_name: Optional[str] = None
+
+
+class FirestoreBatchOpType(str, Enum):
+    SET = 'SET'
+    UPDATE = 'UPDATE'
+    DELETE = 'DELETE'
+
+
+class FirestoreBatchOp(BaseModel):
+    type: FirestoreBatchOpType
+    # This should be a DocumentReference, but Pydantic has some issues with it
+    reference: Any
+    data: Dict[str, Any]
 
 
 # POST /file-docs
@@ -176,3 +194,14 @@ class ReposResponseModel(BaseModel):
 
 class GetReposResponse(BaseModel):
     repos: List[ReposResponseModel]
+
+
+# POST /repos
+
+class CreateRepoDocsRequest(BaseModel):
+    github_url: str
+
+
+class CreateRepoDocsResponse(BaseModel):
+    message: str
+    id: str

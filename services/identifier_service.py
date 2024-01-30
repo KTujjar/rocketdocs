@@ -16,9 +16,7 @@ from services.github_service import GithubService, get_github_service
 
 
 class IdentifierService:
-    def __init__(self, llm_client: LLMClient, github_service: GithubService, data_service: DataService):
-        self.llm_client = llm_client
-        self.github_service = github_service
+    def __init__(self, data_service: DataService):
         self.data_service = data_service
         self.exclude_files = [
             re.compile(pattern) for pattern in [
@@ -33,7 +31,7 @@ class IdentifierService:
             ]
         ]
 
-    def identify(self, repository: Repository):
+    def identify(self, repository: Repository) -> str:
         root = FirestoreDoc(
             id=str(uuid.uuid4()),
             github_url=repository.html_url,
@@ -74,17 +72,15 @@ class IdentifierService:
             dependencies=dependencies,
             docs=docs,
             repo_name=repository.full_name,
-            root_doc=root
+            root_doc=root.id
         )
-        self.data_service.batch_create_repo(repo, repo.docs)
+        repo_id = self.data_service.batch_create_repo(repo)
+        return repo_id
 
 
 def get_identifier_service() -> IdentifierService:
-    """Initializes the service with any dependencies it needs."""
-    llm_client = get_anyscale_client()
-    github_service = get_github_service()
     data_service = get_data_service()
-    return IdentifierService(llm_client, github_service, data_service)
+    return IdentifierService(data_service)
 
 
 # For manually testing this file

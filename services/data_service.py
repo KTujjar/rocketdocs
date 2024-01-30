@@ -11,7 +11,8 @@ from google.cloud.firestore_v1.client import Client
 from google.cloud.storage import Blob
 from pydantic import BaseModel
 
-from schemas.documentation_generation import DocStatusEnum
+from schemas.documentation_generation import DocStatusEnum, FirestoreDoc, FirestoreBatchOp, FirestoreBatchOpType, \
+    FirestoreRepo
 
 
 class DataService:
@@ -22,16 +23,14 @@ class DataService:
         self.bucket = storage.bucket()
         self.db: Client = firestore.client()
 
-    def get_documentation(self, doc_id) -> Dict[str, Any] | None:
+    def get_documentation(self, doc_id) -> FirestoreDoc | None:
         document_snapshot = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
-
         if not document_snapshot:
             return None
-
         document_dict = document_snapshot.to_dict()
-        document_dict["id"] = document_snapshot.id
-
-        return document_dict
+        # document_dict["id"] = document_snapshot.id
+        firestore_doc = FirestoreDoc(**document_dict, id=document_snapshot.id)
+        return firestore_doc
 
     def add_documentation(self, data) -> str:
         document_ref = self._add(
@@ -40,13 +39,6 @@ class DataService:
         )
 
         return document_ref.id
-
-    def batch_add_documentation(self, data) -> List[DocumentReference]:
-        result = self._batch_add(
-            self.DOCUMENTATION_COLLECTION,
-            data
-        )
-        return result
 
     def update_documentation(self, doc_id: str, data) -> None:
         self._update(
@@ -72,9 +64,25 @@ class DataService:
         )
         return document_ref.id
 
-    def batch_create_repo(self, repo, docs) -> None:
-        self._batch_set(self.REPO_COLLECTION, repo)
-        self._batch_set(self.DOCUMENTATION_COLLECTION, docs)
+    def batch_create_repo(self, repo: FirestoreRepo) -> str:
+        batch_ops = [
+            FirestoreBatchOp(
+                type=FirestoreBatchOpType.SET,
+                reference=self.db.collection(self.REPO_COLLECTION).document(repo.id),
+                data=repo.model_dump()
+            )
+        ]
+        for doc in repo.docs:
+            batch_ops.append(
+                FirestoreBatchOp(
+                    type=FirestoreBatchOpType.SET,
+                    reference=self.db.collection(self.DOCUMENTATION_COLLECTION).document(doc.id),
+                    data=doc.model_dump(exclude_unset=True)
+                )
+            )
+        self._perform_batch(batch_ops)
+
+        return repo.id
 
     def get_repo(self, repo_id) -> Dict[str, Any]:
         repo = self._get(self.REPO_COLLECTION, repo_id)
@@ -92,29 +100,18 @@ class DataService:
         update_time, document_ref = collection_ref.add(data)
         return document_ref
 
-    def _batch_add(self, collection_path, data) -> List[DocumentReference]:
-        collection_ref = self.db.collection(collection_path)
-        batch = self.db.batch()
-        if not isinstance(data, list):
-            data = [data]
-        for doc in data:
-            if isinstance(doc, BaseModel):
-                doc = doc.model_dump(exclude_unset=True)
-            batch.set(collection_ref.document(), doc)
-        result = batch.commit()
-        return result
-
-    def _batch_set(self, collection_path, data) -> List[DocumentReference]:
-        collection_ref = self.db.collection(collection_path)
-        batch = self.db.batch()
-        if not isinstance(data, list):
-            data = [data]
-        for doc in data:
-            if isinstance(doc, BaseModel):
-                doc = doc.model_dump(exclude_unset=True)
-            batch.set(collection_ref.document(doc.get("id")), doc)
-        result = batch.commit()
-        return result
+    def _perform_batch(self, batch_ops: List[FirestoreBatchOp]) -> None:
+        batches = [batch_ops[item:item + 500] for item in range(0, len(batch_ops), 500)]
+        for batch_data in batches:
+            batch = self.db.batch()
+            for batch_op in batch_data:
+                if batch_op.type == FirestoreBatchOpType.SET:
+                    batch.set(batch_op.reference, batch_op.data)
+                elif batch_op.type == FirestoreBatchOpType.UPDATE:
+                    batch.update(batch_op.reference, batch_op.data)
+                elif batch_op.type == FirestoreBatchOpType.DELETE:
+                    batch.delete(batch_op.reference)
+            batch.commit()
 
     def _get(self, collection_path, document_id) -> DocumentSnapshot | None:
         document_ref = self.db.collection(collection_path).document(document_id)

@@ -194,7 +194,7 @@ class DocumentationService:
     
     @staticmethod
     def _format_repo(repo_response: FirestoreRepo) -> RepoFormatted:
-        root_doc: FirestoreDoc = repo_response.root_doc
+        root_doc: str = repo_response.root_doc
         repo_name: str = repo_response.repo_name
         repo_id: str = repo_response.id
         dependencies: dict[str, str] = repo_response.dependencies
@@ -230,7 +230,7 @@ class DocumentationService:
                         queue.append(child)
                         used.add(child)
 
-        bfs(root_doc.id)
+        bfs(root_doc)
 
         return repo_formatted
 
