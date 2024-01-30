@@ -1,9 +1,8 @@
 from typing import Dict, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 
 from schemas.documentation_generation import GetRepoResponse, GetReposResponse
-from services.clients.github_client import GitHubClient, get_github_client
 from services.documentation_service import DocumentationService, get_documentation_service
 from routers.utils.auth import get_user_token
 

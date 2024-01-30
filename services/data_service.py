@@ -1,33 +1,25 @@
 import os
-from typing import Generator, Any, Dict
+from typing import Generator, Any, Dict, List
 
 import firebase_admin
 from dotenv import load_dotenv
+from fastapi import HTTPException, status
 from firebase_admin import storage, firestore
 from google.cloud.firestore_v1 import DocumentReference
 from google.cloud.firestore_v1.base_document import DocumentSnapshot
 from google.cloud.firestore_v1.client import Client
 from google.cloud.storage import Blob
-from typing import Iterator
+
+from schemas.documentation_generation import DocsStatusEnum
 
 
-class FirebaseClient:
+class DataService:
     DOCUMENTATION_COLLECTION = "documentation"
     REPO_COLLECTION = "repos"
 
     def __init__(self):
         self.bucket = storage.bucket()
         self.db: Client = firestore.client()
-
-    def add_blob(self, blob_url, data: str):
-        blob = self.bucket.blob(blob_url)
-        blob.upload_from_string(data)
-
-    def get_blob(self, blob_url) -> Blob:
-        return self.bucket.get_blob(blob_url)
-    
-    def delete_blob(self, blob_url):
-        self.bucket.blob(blob_url).delete()
 
     def get_documentation(self, doc_id) -> Dict[str, Any] | None:
         document_snapshot = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
@@ -42,7 +34,7 @@ class FirebaseClient:
 
     def add_documentation(self, data) -> str:
         document_ref = self._add(
-            FirebaseClient.DOCUMENTATION_COLLECTION,
+            self.DOCUMENTATION_COLLECTION,
             data
         )
 
@@ -56,24 +48,23 @@ class FirebaseClient:
         )
 
     def delete_documentation(self, doc_id: str) -> None:
+        doc = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
+        if doc.get("status") == DocsStatusEnum.STARTED:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Data is still being generated for this id, so it cannot be deleted yet.")
         self._delete(
-            self.DOCUMENTATION_COLLECTION, 
+            self.DOCUMENTATION_COLLECTION,
             doc_id
         )
 
     def get_repo(self, repo_id) -> Dict[str, Any]:
         repo = self._get(self.REPO_COLLECTION, repo_id)
-        
         return {**repo.to_dict(), 'id': repo.id}
 
-    def get_repos(self) -> Iterator[Dict[str, Any]]:
+    def get_repos(self) -> List[Dict[str, str]]:
         repos = self._list(self.REPO_COLLECTION)
         repos_dicts = [{**repo.to_dict(), 'id': repo.id} for repo in repos]
         return repos_dicts
-    
-    @staticmethod
-    def get_blob_url(blob_name, folder="repo") -> str:
-        return f"{folder}/{blob_name}"
 
     def _add(self, collection_path, data) -> DocumentReference:
         collection_ref = self.db.collection(collection_path)
@@ -99,9 +90,24 @@ class FirebaseClient:
         docs = self.db.collection(collection_path)
         return docs.stream()
 
+    # Blob operations are unused for now
+    def add_blob(self, blob_url, data: str):
+        blob = self.bucket.blob(blob_url)
+        blob.upload_from_string(data)
 
-def get_firebase_client() -> FirebaseClient:
-    return FirebaseClient()
+    def get_blob(self, blob_url) -> Blob:
+        return self.bucket.get_blob(blob_url)
+
+    def delete_blob(self, blob_url):
+        self.bucket.blob(blob_url).delete()
+
+    @staticmethod
+    def get_blob_url(blob_name, folder="repo") -> str:
+        return f"{folder}/{blob_name}"
+
+
+def get_data_service() -> DataService:
+    return DataService()
 
 
 if __name__ == "__main__":
@@ -111,13 +117,13 @@ if __name__ == "__main__":
         options={"storageBucket": os.getenv("CLOUD_STORAGE_BUCKET")}
     )
 
-    firebase_client = get_firebase_client()
+    data_service = get_data_service()
 
     # Firestore
     # result = firebase_client.add_document("documentation", {"status": "IN PROGRESS"})
     # print(result)
 
     # Cloud Storage
-    firebase_client.add_blob("/repo/something.txt", "some docs")
+    data_service.add_blob("/repo/something.txt", "some docs")
     # result = firebase_client.get_blob("/repo/something.txt")
     # print(result.download_as_text())
