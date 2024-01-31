@@ -8,9 +8,9 @@ import firebase_admin
 from github.ContentFile import ContentFile
 from openai.types.chat import ChatCompletion
 
-from schemas.documentation_generation import DocsStatusEnum, \
-    RepoResponseModel, GeneratedDoc, LlmModelEnum, LlmDocSchema, RepoFormatted, \
-    FirestoreRepoDocModel, ReposResponseModel, FirestoreDoc
+from schemas.documentation_generation import DocStatusEnum, \
+    GeneratedDoc, LlmModelEnum, LlmDocSchema, RepoFormatted, \
+    ReposResponseModel, FirestoreDoc, FirestoreRepo
 from services.clients.anyscale_client import get_anyscale_client
 from services.data_service import DataService, get_data_service
 from fastapi import BackgroundTasks, HTTPException, status
@@ -68,7 +68,7 @@ class DocumentationService:
                 extracted_data=generated_doc.extracted_data,
                 markdown_content=generated_doc.markdown_content,
                 usage=generated_doc.usage,
-                status=DocsStatusEnum.COMPLETED,
+                status=DocStatusEnum.COMPLETED,
             ).model_dump(exclude_defaults=True)
         )
 
@@ -84,7 +84,7 @@ class DocumentationService:
                 type=file.type,
                 size=file.size,
                 relative_path=file.path,
-                status=DocsStatusEnum.STARTED
+                status=DocStatusEnum.IN_PROGRESS
             ).model_dump()
         )
 
@@ -107,11 +107,11 @@ class DocumentationService:
         doc = self.data_service.get_documentation(doc_id)
         firestore_doc = FirestoreDoc(**doc)
 
-        if firestore_doc.status == DocsStatusEnum.STARTED:
+        if firestore_doc.status not in [DocStatusEnum.COMPLETED, DocStatusEnum.FAILED]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail=f"Data is still being generated for this id, so it cannot be regenerated yet.")
 
-        github_file = self.github_service.get_file(firestore_doc.github_url)
+        github_file = self.github_service.get_file_from_url(firestore_doc.github_url)
 
         self.data_service.update_documentation(
             doc_id,
@@ -120,7 +120,7 @@ class DocumentationService:
                 type=github_file.type,
                 size=github_file.size,
                 relative_path=github_file.path,
-                status=DocsStatusEnum.STARTED
+                status=DocStatusEnum.IN_PROGRESS
             ).model_dump()
         )
 
@@ -133,9 +133,9 @@ class DocumentationService:
 
         return doc_id
 
-    def get_repos(self) -> list[ReposResponseModel]:
+    def get_repos(self) -> List[ReposResponseModel]:
         repos_dicts = self.data_service.get_repos()
-        repos = [RepoResponseModel.model_validate(repo_dict) for repo_dict in repos_dicts]
+        repos = [FirestoreRepo(**repo_dict) for repo_dict in repos_dicts]
         repos_formatted = [ReposResponseModel(name=repo.repo_name, id=repo.id, status=self._get_repo_status(repo)) for
                            repo in repos]
 
@@ -143,7 +143,7 @@ class DocumentationService:
 
     def get_repo(self, repo_id) -> RepoFormatted:
         repo_dict = self.data_service.get_repo(repo_id)
-        repo = RepoResponseModel.model_validate(repo_dict)
+        repo = FirestoreRepo(**repo_dict)
         repo_formatted = self._format_repo(repo)
         return repo_formatted
 
@@ -193,24 +193,24 @@ class DocumentationService:
                                 detail="LLM output not parsable")
     
     @staticmethod
-    def _format_repo(repo_response: RepoResponseModel) -> RepoFormatted:
-        root_doc: FirestoreRepoDocModel = repo_response.root_doc
+    def _format_repo(repo_response: FirestoreRepo) -> RepoFormatted:
+        root_doc: str = repo_response.root_doc
         repo_name: str = repo_response.repo_name
         repo_id: str = repo_response.id
         dependencies: dict[str, str] = repo_response.dependencies
-        docs: list[FirestoreRepoDocModel] = repo_response.docs
+        docs: list[FirestoreDoc] = repo_response.docs
 
         repo_formatted = RepoFormatted(name=repo_name, id=repo_id, tree=[], nodes_map={})
 
-        def find_doc_by_id(doc_list: list[FirestoreRepoDocModel], doc_id) -> FirestoreRepoDocModel | None:
+        def find_doc_by_id(doc_list: list[FirestoreDoc], doc_id) -> FirestoreDoc | None:
             for doc in doc_list:
                 if doc.id == doc_id:
                     return doc
             return None
 
         def process_node(parent_id, child_id):
-            parent_data: FirestoreRepoDocModel = find_doc_by_id(docs, parent_id) 
-            child_data: FirestoreRepoDocModel = find_doc_by_id(docs, child_id) 
+            parent_data: FirestoreDoc = find_doc_by_id(docs, parent_id)
+            child_data: FirestoreDoc = find_doc_by_id(docs, child_id)
 
             repo_formatted.insert_node(parent_data, child_data)
        
@@ -230,12 +230,12 @@ class DocumentationService:
                         queue.append(child)
                         used.add(child)
 
-        bfs(root_doc.id)
+        bfs(root_doc)
 
         return repo_formatted
 
     @staticmethod
-    def _get_repo_status(repo_response: RepoResponseModel) -> list[dict[str, DocsStatusEnum]]:
+    def _get_repo_status(repo_response: FirestoreRepo) -> list[dict[str, DocStatusEnum]]:
         docs = repo_response.docs
 
         repo_status = [{doc.id: doc.status} for doc in docs]
