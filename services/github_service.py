@@ -35,7 +35,7 @@ class GithubService:
         return self.github.get_repo(username + "/" + repo_name)
 
     @staticmethod
-    def get_repo_contents(repository: Repository, exclude: Optional[List[str]] = None) -> List[ContentFile]:
+    def get_all_repo_contents(repository: Repository, exclude: Optional[List[str]] = None) -> List[ContentFile]:
         all_content = []
         queue = repository.get_contents("")
         while queue:

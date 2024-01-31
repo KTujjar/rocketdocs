@@ -31,7 +31,7 @@ class IdentifierService:
             ]
         ]
 
-    def identify(self, repository: Repository) -> str:
+    def identify(self, repository: Repository) -> FirestoreRepo:
         root = FirestoreDoc(
             id=str(uuid.uuid4()),
             github_url=repository.html_url,
@@ -74,8 +74,8 @@ class IdentifierService:
             repo_name=repository.full_name,
             root_doc=root.id
         )
-        repo_id = self.data_service.batch_create_repo(repo)
-        return repo_id
+        self.data_service.batch_create_repo(repo)
+        return repo
 
 
 def get_identifier_service() -> IdentifierService:

@@ -28,7 +28,6 @@ class DataService:
         if not document_snapshot:
             return None
         document_dict = document_snapshot.to_dict()
-        # document_dict["id"] = document_snapshot.id
         firestore_doc = FirestoreDoc(**document_dict, id=document_snapshot.id)
         return firestore_doc
 

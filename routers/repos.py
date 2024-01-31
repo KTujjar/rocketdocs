@@ -42,11 +42,11 @@ async def create_repo_docs(
         github_service: GithubService = Depends(get_github_service),
         user: Dict[str, Any] = Depends(get_user_token),
 ) -> CreateRepoDocsResponse:
-    repo = github_service.get_repo_from_url(request.github_url)
-    repo_id = identifier_service.identify(repo)
+    github_repo = github_service.get_repo_from_url(request.github_url)
+    firestore_repo = identifier_service.identify(github_repo)
 
     return CreateRepoDocsResponse(
         message="Documentation generation has been started.",
-        id=repo_id
+        id=firestore_repo.id
     )
 

@@ -48,7 +48,7 @@ async def get_file_docs(
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Documentation not found.")
-    return GetFileDocsResponse(**doc)
+    return GetFileDocsResponse(**doc.model_dump())
 
 
 @router.delete("/file-docs/{doc_id}")
