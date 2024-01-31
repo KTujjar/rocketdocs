@@ -28,7 +28,8 @@ class DataService:
         if not document_snapshot:
             return None
         document_dict = document_snapshot.to_dict()
-        firestore_doc = FirestoreDoc(**document_dict, id=document_snapshot.id)
+        document_dict["id"] = document_snapshot.id
+        firestore_doc = FirestoreDoc(**document_dict)
         return firestore_doc
 
     def add_documentation(self, data) -> str:
