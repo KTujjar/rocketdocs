@@ -21,12 +21,16 @@ async def generate_file_docs(
         user: Dict[str, Any] = Depends(get_user_token),
         model: LlmModelEnum = LlmModelEnum.MIXTRAL
 ) -> GenerateFileDocsResponse:
+    user_id = user.get("uid")
+
     if not request.github_url:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail="Required field 'github_url' is missing.")
 
     github_file = github_service.get_file_from_url(request.github_url)
+
     doc_id = documentation_service.enqueue_generate_doc_job(
+        user_id,
         background_tasks,
         github_file,
         model
@@ -44,10 +48,10 @@ async def get_file_docs(
         data_service: DataService = Depends(get_data_service),
         user: Dict[str, Any] = Depends(get_user_token),
 ) -> GetFileDocsResponse:
-    doc = data_service.get_documentation(doc_id)
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="Documentation not found.")
+    user_id = user.get("uid")
+
+    doc = data_service.get_user_documentation(user_id, doc_id)
+
     return GetFileDocsResponse(**doc.model_dump())
 
 
@@ -57,7 +61,9 @@ async def delete_file_docs(
         data_service: DataService = Depends(get_data_service),
         user: Dict[str, Any] = Depends(get_user_token),
 ) -> DeleteFileDocsResponse:
-    data_service.delete_documentation(doc_id)
+    user_id = user.get("uid")
+
+    data_service.delete_user_documentation(user_id, doc_id)
 
     return DeleteFileDocsResponse(
         message=f"The data associated with id='{doc_id}' was deleted.",
@@ -73,8 +79,11 @@ async def regenerate_file_docs(
         user: Dict[str, Any] = Depends(get_user_token),
         model: LlmModelEnum = LlmModelEnum.MIXTRAL,
 ) -> UpdateFileDocsResponse:
+    user_id = user.get("uid")
+    
     doc_id = documentation_service.regenerate_doc(
         background_tasks,
+        user_id,
         doc_id,
         model
     )

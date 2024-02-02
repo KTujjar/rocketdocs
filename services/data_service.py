@@ -32,12 +32,32 @@ class DataService:
         document_dict["id"] = document_snapshot.id
         firestore_doc = FirestoreDoc(**document_dict)
         return firestore_doc
+    
+    def get_user_documentation(self, user_id, doc_id) -> FirestoreDoc | None:
+        user_documentation_query = self._query(self.DOCUMENTATION_COLLECTION, [
+            FirestoreQuery(field_path="owner", op_string=FirestoreQuery.OP_STRING_EQUALS, value=user_id), # query for owner
+            FirestoreQuery(field_path="id", op_string=FirestoreQuery.OP_STRING_EQUALS, value=doc_id)  # query for doc_id
+        ])
+
+        if (len(user_documentation_query) > 1):
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                detail=f"More than one documentation found in query.")
+        
+        if (len(user_documentation_query) < 1):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"No documentation found with id {doc_id} and owner {user_id}.")
+
+        documentation = user_documentation_query[0]
+        documentation_dict = {**documentation.to_dict(), 'id': documentation.id, 'owner': documentation.get('owner')}
+        return FirestoreDoc(**documentation_dict)
 
     def add_documentation(self, data) -> str:
         document_ref = self._add(
             self.DOCUMENTATION_COLLECTION,
             data
         )
+
+        document_ref.update({'id': document_ref.id})
 
         return document_ref.id
 
@@ -49,6 +69,30 @@ class DataService:
         )
 
     def delete_documentation(self, doc_id: str) -> None:
+        doc = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
+        if doc.get("status") == DocStatusEnum.IN_PROGRESS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Data is still being generated for this id, so it cannot be deleted yet.")
+        self._delete(
+            self.DOCUMENTATION_COLLECTION,
+            doc_id
+        )
+
+    def delete_user_documentation(self, user_id, doc_id) -> None:
+        user_documentation_query = self._query(self.DOCUMENTATION_COLLECTION, [
+            FirestoreQuery(field_path="owner", op_string=FirestoreQuery.OP_STRING_EQUALS, value=user_id), # query for owner
+            FirestoreQuery(field_path="id", op_string=FirestoreQuery.OP_STRING_EQUALS, value=doc_id)  # query for doc_id
+        ])
+
+        if (len(user_documentation_query) > 1):
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                detail=f"More than one documentation found in query.")
+        
+        if (len(user_documentation_query) < 1):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"No documentation found with id {doc_id} and owner {user_id}.")
+
+
         doc = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
         if doc.get("status") == DocStatusEnum.IN_PROGRESS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
@@ -103,6 +147,10 @@ class DataService:
         if (len(user_repo_query) > 1):
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                                 detail=f"More than one repo found in query.")
+        
+        if (len(user_repo_query) < 1):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"No repo found with id {repo_id} and owner {user_id}.")
         
         repo = user_repo_query[0]
 

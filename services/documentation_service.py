@@ -74,6 +74,7 @@ class DocumentationService:
 
     def enqueue_generate_doc_job(
             self,
+            user_id: str,
             background_tasks: BackgroundTasks,
             file: ContentFile,
             model: LlmModelEnum
@@ -84,7 +85,8 @@ class DocumentationService:
                 type=file.type,
                 size=file.size,
                 relative_path=file.path,
-                status=DocStatusEnum.IN_PROGRESS
+                status=DocStatusEnum.IN_PROGRESS,
+                owner=user_id
             ).model_dump()
         )
 
@@ -101,11 +103,11 @@ class DocumentationService:
     def regenerate_doc(
             self,
             background_tasks: BackgroundTasks,
+            user_id: str,
             doc_id: str,
             model: LlmModelEnum
     ) -> str:
-        doc = self.data_service.get_documentation(doc_id)
-        firestore_doc = FirestoreDoc(**doc)
+        firestore_doc:FirestoreDoc = self.data_service.get_user_documentation(user_id, doc_id)
 
         if firestore_doc.status not in [DocStatusEnum.COMPLETED, DocStatusEnum.FAILED]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
@@ -116,6 +118,8 @@ class DocumentationService:
         self.data_service.update_documentation(
             doc_id,
             FirestoreDoc(
+                id=doc_id,
+                owner=user_id,
                 github_url=github_file.html_url,
                 type=github_file.type,
                 size=github_file.size,

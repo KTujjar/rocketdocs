@@ -46,6 +46,7 @@ class FirestoreDoc(BaseModel):
     markdown_content: Optional[str] = None
     usage: Optional[CompletionUsage] = None
     status: Optional[DocStatusEnum] = None
+    owner: Optional[str] = None
 
 
 class FirestoreRepo(BaseModel):
