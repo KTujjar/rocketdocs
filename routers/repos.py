@@ -18,7 +18,8 @@ async def get_repos(
         documentation_service: DocumentationService = Depends(get_documentation_service),
         user: Dict[str, Any] = Depends(get_user_token),
 ) -> GetReposResponse:
-    repos: List[ReposResponseModel] = documentation_service.get_repos()
+    user_id = user.get("uid")
+    repos: List[ReposResponseModel] = documentation_service.get_user_repos(user_id)
 
     return GetReposResponse(repos=repos)
 
@@ -30,7 +31,9 @@ async def get_repo(
         documentation_service: DocumentationService = Depends(get_documentation_service),
         user: Dict[str, Any] = Depends(get_user_token),
 ) -> GetRepoResponse:
-    repo: RepoFormatted = documentation_service.get_repo(repo_id)
+    user_id = user.get("uid")
+    repo: RepoFormatted = documentation_service.get_user_repo(user_id, repo_id)
+    
 
     return GetRepoResponse(repo=repo)
 

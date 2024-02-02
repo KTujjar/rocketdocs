@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import ClassVar, Dict, Any, List, Optional
 
 from google.cloud.firestore_v1 import DocumentReference
 from openai.types import CompletionUsage
@@ -52,16 +52,23 @@ class FirestoreRepo(BaseModel):
     id: Optional[str] = None
     dependencies: Optional[Dict[str, str | None]] = None
     root_doc: Optional[str] = None  # {id: "doc_id_1", path: "/README.md", status: "COMPLETED"}
-    docs: Optional[List[
-        FirestoreDoc]] = None  # [{id: "doc_id_1", path: "/README.md", status: "COMPLETED"}, {id: "doc_id_2", path: "/README2.md", status: "STARTED"}]
+    docs: Optional[List[FirestoreDoc]] = None  # [{id: "doc_id_1", path: "/README.md", status: "COMPLETED"}, {id: "doc_id_2", path: "/README2.md", status: "STARTED"}]
     version: Optional[str] = None  # commitId
     repo_name: Optional[str] = None
+    owner: Optional[str] = None
 
 
 class FirestoreBatchOpType(str, Enum):
     SET = 'SET'
     UPDATE = 'UPDATE'
     DELETE = 'DELETE'
+
+class FirestoreQuery(BaseModel):
+    OP_STRING_EQUALS: ClassVar[str] = '=='
+
+    field_path: str
+    op_string: str
+    value: str
 
 
 class FirestoreBatchOp(BaseModel):
@@ -126,6 +133,7 @@ class RepoNode(BaseModel):
 class RepoFormatted(BaseModel):
     name: str
     id: str
+    owner_id: str
     tree: list[RepoNode]
     nodes_map: dict[str, RepoNode] = Field(exclude=True)  # id to RepoNode
 

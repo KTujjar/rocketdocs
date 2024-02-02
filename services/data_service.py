@@ -8,11 +8,12 @@ from firebase_admin import storage, firestore
 from google.cloud.firestore_v1 import DocumentReference, WriteBatch
 from google.cloud.firestore_v1.base_document import DocumentSnapshot
 from google.cloud.firestore_v1.client import Client
+from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.storage import Blob
 from pydantic import BaseModel
 
 from schemas.documentation_generation import DocStatusEnum, FirestoreDoc, FirestoreBatchOp, FirestoreBatchOpType, \
-    FirestoreRepo
+    FirestoreRepo, FirestoreQuery
 
 
 class DataService:
@@ -92,6 +93,28 @@ class DataService:
         repos = self._list(self.REPO_COLLECTION)
         repos_dicts = [{**repo.to_dict(), 'id': repo.id} for repo in repos]
         return repos_dicts
+    
+    def get_user_repo(self, user_id, repo_id) -> Dict[str, Any]:
+        user_repo_query = self._query(self.REPO_COLLECTION, [
+            FirestoreQuery(field_path="owner", op_string=FirestoreQuery.OP_STRING_EQUALS, value=user_id), # query for owner
+            FirestoreQuery(field_path="id", op_string=FirestoreQuery.OP_STRING_EQUALS, value=repo_id)  # query for repo_id
+        ])
+
+        if (len(user_repo_query) > 1):
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                detail=f"More than one repo found in query.")
+        
+        repo = user_repo_query[0]
+
+        return {**repo.to_dict(), 'id': repo.id, 'owner': repo.get('owner')}
+    
+    def get_user_repos(self, user_id) -> Dict[str, Any]:
+        user_repo_query = self._query(self.REPO_COLLECTION, [
+            FirestoreQuery(field_path="owner", op_string=FirestoreQuery.OP_STRING_EQUALS, value=user_id), # query for owner
+        ])
+        repos_dicts = [{**repo.to_dict(), 'id': repo.id, 'owner': repo.get('owner')} for repo in user_repo_query]
+
+        return repos_dicts
 
     def _add(self, collection_path, data) -> DocumentReference:
         collection_ref = self.db.collection(collection_path)
@@ -133,6 +156,18 @@ class DataService:
     def _list(self, collection_path) -> Generator[DocumentSnapshot, Any, None]:
         docs = self.db.collection(collection_path)
         return docs.stream()
+    
+    def _query(self, collection_path, queries: list[FirestoreQuery]) -> list[DocumentSnapshot]:
+        collection_ref = self.db.collection(collection_path)
+
+        query = collection_ref
+        for query_details in queries:
+            query = query.where(filter=FieldFilter(**query_details.model_dump()))
+
+        results = query.get()
+
+        return results
+
 
     # Blob operations are unused for now
     def add_blob(self, blob_url, data: str):
