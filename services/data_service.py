@@ -34,21 +34,17 @@ class DataService:
         return firestore_doc
     
     def get_user_documentation(self, user_id, doc_id) -> FirestoreDoc | None:
-        user_documentation_query = self._query(self.DOCUMENTATION_COLLECTION, [
-            FirestoreQuery(field_path="owner", op_string=FirestoreQuery.OP_STRING_EQUALS, value=user_id), # query for owner
-            FirestoreQuery(field_path="id", op_string=FirestoreQuery.OP_STRING_EQUALS, value=doc_id)  # query for doc_id
-        ])
+        doc = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
 
-        if (len(user_documentation_query) > 1):
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=f"More than one documentation found in query.")
-        
-        if (len(user_documentation_query) < 1):
+        if not doc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail=f"No documentation found with id {doc_id} and owner {user_id}.")
+                                detail=f"No documentation found with id {doc_id}.")
+        
+        if doc.get('owner') != user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail=f"{user_id} is not the owner of documentation with id {doc_id}.")
 
-        documentation = user_documentation_query[0]
-        documentation_dict = {**documentation.to_dict(), 'id': documentation.id, 'owner': documentation.get('owner')}
+        documentation_dict = {**doc.to_dict(), 'id': doc.id}
         return FirestoreDoc(**documentation_dict)
 
     def add_documentation(self, data) -> str:
@@ -79,21 +75,16 @@ class DataService:
         )
 
     def delete_user_documentation(self, user_id, doc_id) -> None:
-        user_documentation_query = self._query(self.DOCUMENTATION_COLLECTION, [
-            FirestoreQuery(field_path="owner", op_string=FirestoreQuery.OP_STRING_EQUALS, value=user_id), # query for owner
-            FirestoreQuery(field_path="id", op_string=FirestoreQuery.OP_STRING_EQUALS, value=doc_id)  # query for doc_id
-        ])
-
-        if (len(user_documentation_query) > 1):
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=f"More than one documentation found in query.")
-        
-        if (len(user_documentation_query) < 1):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail=f"No documentation found with id {doc_id} and owner {user_id}.")
-
-
         doc = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
+
+        if not doc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"No documentation found with id {doc_id}.")
+        
+        if doc.get('owner') != user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail=f"{user_id} is not the owner of documentation with id {doc_id}.")
+
         if doc.get("status") == DocStatusEnum.IN_PROGRESS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail=f"Data is still being generated for this id, so it cannot be deleted yet.")
@@ -139,28 +130,23 @@ class DataService:
         return repos_dicts
     
     def get_user_repo(self, user_id, repo_id) -> Dict[str, Any]:
-        user_repo_query = self._query(self.REPO_COLLECTION, [
-            FirestoreQuery(field_path="owner", op_string=FirestoreQuery.OP_STRING_EQUALS, value=user_id), # query for owner
-            FirestoreQuery(field_path="id", op_string=FirestoreQuery.OP_STRING_EQUALS, value=repo_id)  # query for repo_id
-        ])
+        repo = self._get(self.REPO_COLLECTION, repo_id)
 
-        if (len(user_repo_query) > 1):
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=f"More than one repo found in query.")
-        
-        if (len(user_repo_query) < 1):
+        if not repo:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail=f"No repo found with id {repo_id} and owner {user_id}.")
+                                detail=f"No repo found with id {repo_id}.")
         
-        repo = user_repo_query[0]
+        if repo.get('owner') != user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail=f"{user_id} is not the owner of repo with id {repo_id}.")
 
-        return {**repo.to_dict(), 'id': repo.id, 'owner': repo.get('owner')}
+        return {**repo.to_dict(), 'id': repo.id}
     
     def get_user_repos(self, user_id) -> Dict[str, Any]:
         user_repo_query = self._query(self.REPO_COLLECTION, [
             FirestoreQuery(field_path="owner", op_string=FirestoreQuery.OP_STRING_EQUALS, value=user_id), # query for owner
         ])
-        repos_dicts = [{**repo.to_dict(), 'id': repo.id, 'owner': repo.get('owner')} for repo in user_repo_query]
+        repos_dicts = [{**repo.to_dict(), 'id': repo.id} for repo in user_repo_query]
 
         return repos_dicts
 

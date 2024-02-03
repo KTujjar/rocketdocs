@@ -137,34 +137,6 @@ class DocumentationService:
 
         return doc_id
 
-    def get_repos(self) -> List[ReposResponseModel]:
-        repos_dicts = self.data_service.get_repos()
-        repos = [FirestoreRepo(**repo_dict) for repo_dict in repos_dicts]
-        repos_formatted = [ReposResponseModel(name=repo.repo_name, id=repo.id, status=self._get_repo_status(repo)) for
-                           repo in repos]
-
-        return repos_formatted
-
-    def get_repo(self, repo_id) -> RepoFormatted:
-        repo_dict = self.data_service.get_repo(repo_id)
-        repo = FirestoreRepo(**repo_dict)
-        repo_formatted = self._format_repo(repo)
-        return repo_formatted
-
-    def get_user_repo(self, user_id, repo_id) -> RepoFormatted:
-        repo_dict = self.data_service.get_user_repo(user_id, repo_id)
-        repo = FirestoreRepo(**repo_dict)
-        repo_formatted = self._format_repo(repo)
-        return repo_formatted
-    
-    def get_user_repos(self, user_id) -> list[ReposResponseModel]:
-        repos_dicts = self.data_service.get_user_repos(user_id)
-        repos = [FirestoreRepo(**repo_dict) for repo_dict in repos_dicts]
-        repos_formatted = [ReposResponseModel(name=repo.repo_name, id=repo.id, status=self._get_repo_status(repo)) for
-                           repo in repos]
-        
-        return repos_formatted
-
     async def _generate_doc_completion(self, model: LlmModelEnum, prompt: str) -> ChatCompletion:
         return await self.llm_client.generate_json(
             model=model,
@@ -211,7 +183,7 @@ class DocumentationService:
                                 detail="LLM output not parsable")
     
     @staticmethod
-    def _format_repo(repo_response: FirestoreRepo) -> RepoFormatted:
+    def format_repo(repo_response: FirestoreRepo) -> RepoFormatted:
         root_doc: str = repo_response.root_doc
         repo_name: str = repo_response.repo_name
         repo_id: str = repo_response.id
@@ -254,7 +226,7 @@ class DocumentationService:
         return repo_formatted
 
     @staticmethod
-    def _get_repo_status(repo_response: FirestoreRepo) -> list[dict[str, DocStatusEnum]]:
+    def get_repo_status(repo_response: FirestoreRepo) -> list[dict[str, DocStatusEnum]]:
         docs = repo_response.docs
 
         repo_status = [{doc.id: doc.status} for doc in docs]
