@@ -74,6 +74,7 @@ class DocumentationService:
 
     def enqueue_generate_doc_job(
             self,
+            user_id: str,
             background_tasks: BackgroundTasks,
             file: ContentFile,
             model: LlmModelEnum
@@ -84,7 +85,8 @@ class DocumentationService:
                 type=file.type,
                 size=file.size,
                 relative_path=file.path,
-                status=DocStatusEnum.IN_PROGRESS
+                status=DocStatusEnum.IN_PROGRESS,
+                owner=user_id
             ).model_dump()
         )
 
@@ -101,11 +103,11 @@ class DocumentationService:
     def regenerate_doc(
             self,
             background_tasks: BackgroundTasks,
+            user_id: str,
             doc_id: str,
             model: LlmModelEnum
     ) -> str:
-        doc = self.data_service.get_documentation(doc_id)
-        firestore_doc = FirestoreDoc(**doc)
+        firestore_doc:FirestoreDoc = self.data_service.get_user_documentation(user_id, doc_id)
 
         if firestore_doc.status not in [DocStatusEnum.COMPLETED, DocStatusEnum.FAILED]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
@@ -116,6 +118,8 @@ class DocumentationService:
         self.data_service.update_documentation(
             doc_id,
             FirestoreDoc(
+                id=doc_id,
+                owner=user_id,
                 github_url=github_file.html_url,
                 type=github_file.type,
                 size=github_file.size,
@@ -132,20 +136,6 @@ class DocumentationService:
         )
 
         return doc_id
-
-    def get_repos(self) -> List[ReposResponseModel]:
-        repos_dicts = self.data_service.get_repos()
-        repos = [FirestoreRepo(**repo_dict) for repo_dict in repos_dicts]
-        repos_formatted = [ReposResponseModel(name=repo.repo_name, id=repo.id, status=self._get_repo_status(repo)) for
-                           repo in repos]
-
-        return repos_formatted
-
-    def get_repo(self, repo_id) -> RepoFormatted:
-        repo_dict = self.data_service.get_repo(repo_id)
-        repo = FirestoreRepo(**repo_dict)
-        repo_formatted = self._format_repo(repo)
-        return repo_formatted
 
     async def _generate_doc_completion(self, model: LlmModelEnum, prompt: str) -> ChatCompletion:
         return await self.llm_client.generate_json(
@@ -193,18 +183,19 @@ class DocumentationService:
                                 detail="LLM output not parsable")
     
     @staticmethod
-    def _format_repo(repo_response: FirestoreRepo) -> RepoFormatted:
+    def format_repo(repo_response: FirestoreRepo) -> RepoFormatted:
         root_doc: str = repo_response.root_doc
         repo_name: str = repo_response.repo_name
         repo_id: str = repo_response.id
+        owner_id: str = repo_response.owner
         dependencies: dict[str, str] = repo_response.dependencies
         docs: list[FirestoreDoc] = repo_response.docs
 
-        repo_formatted = RepoFormatted(name=repo_name, id=repo_id, tree=[], nodes_map={})
+        repo_formatted = RepoFormatted(name=repo_name, id=repo_id, owner_id=owner_id, tree=[], nodes_map={})
 
         def find_doc_by_id(doc_list: list[FirestoreDoc], doc_id) -> FirestoreDoc | None:
             for doc in doc_list:
-                if doc.id == doc_id:
+                if doc.id == doc_id: 
                     return doc
             return None
 
@@ -235,7 +226,7 @@ class DocumentationService:
         return repo_formatted
 
     @staticmethod
-    def _get_repo_status(repo_response: FirestoreRepo) -> list[dict[str, DocStatusEnum]]:
+    def get_repo_status(repo_response: FirestoreRepo) -> list[dict[str, DocStatusEnum]]:
         docs = repo_response.docs
 
         repo_status = [{doc.id: doc.status} for doc in docs]

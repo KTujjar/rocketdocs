@@ -8,11 +8,12 @@ from firebase_admin import storage, firestore
 from google.cloud.firestore_v1 import DocumentReference, WriteBatch
 from google.cloud.firestore_v1.base_document import DocumentSnapshot
 from google.cloud.firestore_v1.client import Client
+from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.storage import Blob
 from pydantic import BaseModel
 
 from schemas.documentation_generation import DocStatusEnum, FirestoreDoc, FirestoreBatchOp, FirestoreBatchOpType, \
-    FirestoreRepo
+    FirestoreRepo, FirestoreQuery
 
 
 class DataService:
@@ -31,12 +32,28 @@ class DataService:
         document_dict["id"] = document_snapshot.id
         firestore_doc = FirestoreDoc(**document_dict)
         return firestore_doc
+    
+    def get_user_documentation(self, user_id, doc_id) -> FirestoreDoc | None:
+        doc = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
+
+        if not doc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"No documentation found with id {doc_id}.")
+        
+        if doc.get('owner') != user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail=f"{user_id} is not the owner of documentation with id {doc_id}.")
+
+        documentation_dict = {**doc.to_dict(), 'id': doc.id}
+        return FirestoreDoc(**documentation_dict)
 
     def add_documentation(self, data) -> str:
         document_ref = self._add(
             self.DOCUMENTATION_COLLECTION,
             data
         )
+
+        document_ref.update({'id': document_ref.id})
 
         return document_ref.id
 
@@ -49,6 +66,25 @@ class DataService:
 
     def delete_documentation(self, doc_id: str) -> None:
         doc = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
+        if doc.get("status") == DocStatusEnum.IN_PROGRESS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Data is still being generated for this id, so it cannot be deleted yet.")
+        self._delete(
+            self.DOCUMENTATION_COLLECTION,
+            doc_id
+        )
+
+    def delete_user_documentation(self, user_id, doc_id) -> None:
+        doc = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
+
+        if not doc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"No documentation found with id {doc_id}.")
+        
+        if doc.get('owner') != user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail=f"{user_id} is not the owner of documentation with id {doc_id}.")
+
         if doc.get("status") == DocStatusEnum.IN_PROGRESS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail=f"Data is still being generated for this id, so it cannot be deleted yet.")
@@ -92,6 +128,27 @@ class DataService:
         repos = self._list(self.REPO_COLLECTION)
         repos_dicts = [{**repo.to_dict(), 'id': repo.id} for repo in repos]
         return repos_dicts
+    
+    def get_user_repo(self, user_id, repo_id) -> Dict[str, Any]:
+        repo = self._get(self.REPO_COLLECTION, repo_id)
+
+        if not repo:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"No repo found with id {repo_id}.")
+        
+        if repo.get('owner') != user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail=f"{user_id} is not the owner of repo with id {repo_id}.")
+
+        return {**repo.to_dict(), 'id': repo.id}
+    
+    def get_user_repos(self, user_id) -> Dict[str, Any]:
+        user_repo_query = self._query(self.REPO_COLLECTION, [
+            FirestoreQuery(field_path="owner", op_string=FirestoreQuery.OP_STRING_EQUALS, value=user_id), # query for owner
+        ])
+        repos_dicts = [{**repo.to_dict(), 'id': repo.id} for repo in user_repo_query]
+
+        return repos_dicts
 
     def _add(self, collection_path, data) -> DocumentReference:
         collection_ref = self.db.collection(collection_path)
@@ -133,6 +190,18 @@ class DataService:
     def _list(self, collection_path) -> Generator[DocumentSnapshot, Any, None]:
         docs = self.db.collection(collection_path)
         return docs.stream()
+    
+    def _query(self, collection_path, queries: list[FirestoreQuery]) -> list[DocumentSnapshot]:
+        collection_ref = self.db.collection(collection_path)
+
+        query = collection_ref
+        for query_details in queries:
+            query = query.where(filter=FieldFilter(**query_details.model_dump()))
+
+        results = query.get()
+
+        return results
+
 
     # Blob operations are unused for now
     def add_blob(self, blob_url, data: str):
