@@ -22,7 +22,7 @@ async def get_repos(
     user_id = user.get("uid")
 
     repos_dicts = data_service.get_user_repos(user_id)
-    repos: list[FirestoreRepo] = [FirestoreRepo(**repo_dict) for repo_dict in repos_dicts]
+    repos = [FirestoreRepo(**repo_dict) for repo_dict in repos_dicts]
     repos_formatted = [ReposResponseModel(name=repo.repo_name, id=repo.id, status= DocumentationService.get_repo_status(repo)) for repo in repos]
     
     return GetReposResponse(repos=repos_formatted)
