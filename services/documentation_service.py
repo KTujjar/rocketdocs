@@ -34,6 +34,178 @@ class DocumentationService:
         self.system_prompt_for_markdown_content = ("Your job is to format received input into concise documentation. "
                                                    "Respond in Markdown text.")
 
+    async def generate_doc(
+            self,
+            doc_id: str,
+            model: LlmModelEnum,
+            dependencies: Optional[List[str]] = None
+    ):
+        if dependencies is None:
+            dependencies = []
+
+        doc = self.data_service.get_documentation(doc_id)
+        dep_docs = [self.data_service.get_documentation(dep) for dep in dependencies]
+        self._validate_doc_and_dependencies(doc, dep_docs)
+
+        self.data_service.update_documentation(doc_id, FirestoreDoc(status=StatusEnum.IN_PROGRESS))
+
+        try:
+            if doc.type == FirestoreDocType.FILE:
+                file_content = self.github_service.get_file_from_url(doc.github_url)
+                generated_doc = await self._generate_doc_for_file(file_content, model)
+            elif doc.type == FirestoreDocType.DIRECTORY:
+                generated_doc = await self._generate_doc_for_folder(doc, dep_docs, model)
+            else:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                    detail="Doc type not supported")
+        except Exception as e:
+            self.data_service.update_documentation(doc.id, FirestoreDoc(status=StatusEnum.FAILED))
+            raise e
+
+        self.data_service.update_documentation(
+            doc_id,
+            FirestoreDoc(
+                extracted_data=generated_doc.extracted_data,
+                markdown_content=generated_doc.markdown_content,
+                usage=generated_doc.usage,
+                status=StatusEnum.COMPLETED,
+            )
+        )
+
+    def generate_file_doc_background_task(
+            self,
+            doc_id: str,
+            model: LlmModelEnum
+    ) -> None:
+        generated_doc = asyncio.run(self.generate_doc(doc_id, model))
+
+        self.data_service.update_documentation(
+            doc_id,
+            FirestoreDoc(
+                extracted_data=generated_doc.extracted_data,
+                markdown_content=generated_doc.markdown_content,
+                usage=generated_doc.usage,
+                status=StatusEnum.COMPLETED,
+            )
+        )
+
+    # background tasks for generating the documentation
+    def enqueue_generate_file_doc_job(
+            self,
+            user_id: str,
+            background_tasks: BackgroundTasks,
+            file: ContentFile,
+            model: LlmModelEnum
+    ) -> str:
+        doc_id = self.data_service.add_documentation(
+            FirestoreDoc(
+                github_url=file.html_url,
+                type=file.type,
+                size=file.size,
+                relative_path=file.path,
+                status=StatusEnum.IN_PROGRESS,
+                owner=user_id
+            )
+        )
+
+        # add task to be done async
+        background_tasks.add_task(
+            self.generate_file_doc_background_task,
+            doc_id,
+            model
+        )
+
+        return doc_id
+
+    async def generate_repo_docs_background_task(
+            self,
+            firestore_repo: FirestoreRepo,
+            model: LlmModelEnum
+    ) -> None:
+        self._validate_repo(firestore_repo)
+
+        dgraph = firestore_repo.dependencies
+        root = firestore_repo.root_doc
+
+        children_graph = {parent: [] for parent in dgraph.values()}
+        indegree = defaultdict(int, {node: 0 for node in dgraph})
+
+        for child, parent in dgraph.items():
+            if parent:
+                children_graph[parent].append(child)
+                indegree[parent] += 1
+
+        while root in indegree:
+            leaves = [node for node, degree in indegree.items() if degree == 0]
+            tasks = [
+                self.generate_doc(leaf, model, children_graph.get(leaf))
+                for leaf in leaves
+            ]
+
+            results = await self._run_concurrently(tasks, 30)
+            for result in results:
+                if isinstance(result, BaseException):
+                    self.data_service.update_repo(firestore_repo.id, FirestoreRepo(status=StatusEnum.FAILED))
+                    raise result
+
+            for leaf in leaves:
+                parent = dgraph[leaf]
+                if parent:
+                    indegree[parent] -= 1
+                indegree.pop(leaf)
+
+        self.data_service.update_repo(firestore_repo.id, FirestoreRepo(status=StatusEnum.COMPLETED))
+
+    # TODO: implement a retry and error system
+    def enqueue_generate_repo_docs_job(
+            self,
+            background_tasks: BackgroundTasks,
+            firestore_repo: FirestoreRepo,
+            model: LlmModelEnum
+    ):
+        self.data_service.update_repo(firestore_repo.id, FirestoreRepo(status=StatusEnum.IN_PROGRESS))
+
+        background_tasks.add_task(
+            self.generate_repo_docs_background_task,
+            firestore_repo,
+            model
+        )
+
+    def regenerate_doc(
+            self,
+            background_tasks: BackgroundTasks,
+            user_id: str,
+            doc_id: str,
+            model: LlmModelEnum
+    ) -> str:
+        doc = self.data_service.get_documentation(doc_id)
+        if doc.status not in [StatusEnum.COMPLETED, StatusEnum.FAILED]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Data is still being generated for this id, so it cannot be regenerated yet.")
+
+        github_file = self.github_service.get_file_from_url(doc.github_url)
+
+        self.data_service.update_documentation(
+            doc_id,
+            FirestoreDoc(
+                id=doc_id,
+                owner=user_id,
+                github_url=github_file.html_url,
+                type=github_file.type,
+                size=github_file.size,
+                relative_path=github_file.path,
+                status=StatusEnum.IN_PROGRESS
+            )
+        )
+
+        background_tasks.add_task(
+            self.generate_file_doc_background_task,
+            doc_id,
+            model
+        )
+
+        return doc_id
+
     async def _generate_doc_for_file(
             self,
             file: ContentFile,
@@ -95,179 +267,6 @@ class DocumentationService:
             extracted_data=json_content,
             markdown_content=markdown_content
         )
-
-    async def generate_doc(
-            self,
-            doc_id: str,
-            model: LlmModelEnum,
-            dependencies: Optional[List[str]] = None
-    ):
-        if dependencies is None:
-            dependencies = []
-
-        doc = self.data_service.get_documentation(doc_id)
-        dep_docs = [self.data_service.get_documentation(dep) for dep in dependencies]
-        self._validate_doc_and_dependencies(doc, dep_docs)
-
-        self.data_service.update_documentation(doc_id, FirestoreDoc(status=StatusEnum.IN_PROGRESS))
-
-        try:
-            if doc.type == FirestoreDocType.FILE:
-                file_content = self.github_service.get_file_from_url(doc.github_url)
-                generated_doc = await self._generate_doc_for_file(file_content, model)
-            elif doc.type == FirestoreDocType.DIRECTORY:
-                generated_doc = await self._generate_doc_for_folder(doc, dep_docs, model)
-            else:
-                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                    detail="Doc type not supported")
-        except Exception as e:
-            self.data_service.update_documentation(doc.id, FirestoreDoc(status=StatusEnum.FAILED))
-            raise e
-
-        self.data_service.update_documentation(
-            doc_id,
-            FirestoreDoc(
-                extracted_data=generated_doc.extracted_data,
-                markdown_content=generated_doc.markdown_content,
-                usage=generated_doc.usage,
-                status=StatusEnum.COMPLETED,
-            )
-        )
-
-    # background tasks for generating the documentation
-    def generate_file_doc_background_task(
-            self,
-            doc_id: str,
-            model: LlmModelEnum
-    ) -> None:
-        generated_doc = asyncio.run(self.generate_doc(doc_id, model))
-
-        self.data_service.update_documentation(
-            doc_id,
-            FirestoreDoc(
-                extracted_data=generated_doc.extracted_data,
-                markdown_content=generated_doc.markdown_content,
-                usage=generated_doc.usage,
-                status=StatusEnum.COMPLETED,
-            )
-        )
-
-    def enqueue_generate_file_doc_job(
-            self,
-            user_id: str,
-            background_tasks: BackgroundTasks,
-            file: ContentFile,
-            model: LlmModelEnum
-    ) -> str:
-        doc_id = self.data_service.add_documentation(
-            FirestoreDoc(
-                github_url=file.html_url,
-                type=file.type,
-                size=file.size,
-                relative_path=file.path,
-                status=StatusEnum.IN_PROGRESS,
-                owner=user_id
-            )
-        )
-
-        # add task to be done async
-        background_tasks.add_task(
-            self.generate_file_doc_background_task,
-            doc_id,
-            model
-        )
-
-        return doc_id
-
-    # TODO: implement a retry and error system
-    async def generate_repo_docs_background_task(
-            self,
-            firestore_repo: FirestoreRepo,
-            model: LlmModelEnum
-    ) -> None:
-        self._validate_repo(firestore_repo)
-
-        dgraph = firestore_repo.dependencies
-        root = firestore_repo.root_doc
-
-        children_graph = {parent: [] for parent in dgraph.values()}
-        indegree = defaultdict(int, {node: 0 for node in dgraph})
-
-        for child, parent in dgraph.items():
-            if parent:
-                children_graph[parent].append(child)
-                indegree[parent] += 1
-
-        while root in indegree:
-            leaves = [node for node, degree in indegree.items() if degree == 0]
-            tasks = [
-                self.generate_doc(leaf, model, children_graph.get(leaf))
-                for leaf in leaves
-            ]
-
-            results = await self._run_concurrently(tasks, 30)
-            for result in results:
-                if isinstance(result, BaseException):
-                    self.data_service.update_repo(firestore_repo.id, FirestoreRepo(status=StatusEnum.FAILED))
-                    raise result
-
-            for leaf in leaves:
-                parent = dgraph[leaf]
-                if parent:
-                    indegree[parent] -= 1
-                indegree.pop(leaf)
-
-        self.data_service.update_repo(firestore_repo.id, FirestoreRepo(status=StatusEnum.COMPLETED))
-
-    def enqueue_generate_repo_docs_job(
-            self,
-            background_tasks: BackgroundTasks,
-            firestore_repo: FirestoreRepo,
-            model: LlmModelEnum
-    ):
-        self.data_service.update_repo(firestore_repo.id, FirestoreRepo(status=StatusEnum.IN_PROGRESS))
-
-        background_tasks.add_task(
-            self.generate_repo_docs_background_task,
-            firestore_repo,
-            model
-        )
-
-    def regenerate_doc(
-            self,
-            background_tasks: BackgroundTasks,
-            user_id: str,
-            doc_id: str,
-            model: LlmModelEnum
-    ) -> str:
-        doc = self.data_service.get_documentation(doc_id)
-        if doc.status not in [StatusEnum.COMPLETED, StatusEnum.FAILED]:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail=f"Data is still being generated for this id, so it cannot be regenerated yet.")
-
-        github_file = self.github_service.get_file_from_url(doc.github_url)
-
-        self.data_service.update_documentation(
-            doc_id,
-            FirestoreDoc(
-                id=doc_id,
-                owner=user_id,
-                github_url=github_file.html_url,
-                type=github_file.type,
-                size=github_file.size,
-                relative_path=github_file.path,
-                status=StatusEnum.IN_PROGRESS
-            )
-        )
-
-        background_tasks.add_task(
-            self.generate_file_doc_background_task,
-            doc_id,
-            github_file,
-            model
-        )
-
-        return doc_id
 
     async def _generate_doc_completion(
             self,
