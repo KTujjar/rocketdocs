@@ -29,7 +29,7 @@ async def generate_file_docs(
 
     github_file = github_service.get_file_from_url(request.github_url)
 
-    doc_id = documentation_service.enqueue_generate_doc_job(
+    doc_id = documentation_service.enqueue_generate_file_doc_job(
         user_id,
         background_tasks,
         github_file,

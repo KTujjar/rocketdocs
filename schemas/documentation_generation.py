@@ -24,7 +24,7 @@ class GeneratedDoc(BaseModel):
 
 # Firestore Models
 
-class DocStatusEnum(str, Enum):
+class StatusEnum(str, Enum):
     NOT_STARTED = 'NOT STARTED'
     IN_PROGRESS = 'IN PROGRESS'
     COMPLETED = 'COMPLETED'
@@ -45,17 +45,20 @@ class FirestoreDoc(BaseModel):
     extracted_data: Optional[Dict[str, Any]] = None
     markdown_content: Optional[str] = None
     usage: Optional[CompletionUsage] = None
-    status: Optional[DocStatusEnum] = None
+    status: Optional[StatusEnum] = None
+    repo: Optional[str] = None
     owner: Optional[str] = None
 
 
 class FirestoreRepo(BaseModel):
     id: Optional[str] = None
     dependencies: Optional[Dict[str, str | None]] = None
-    root_doc: Optional[str] = None  # {id: "doc_id_1", path: "/README.md", status: "COMPLETED"}
-    docs: Optional[List[FirestoreDoc]] = None  # [{id: "doc_id_1", path: "/README.md", status: "COMPLETED"}, {id: "doc_id_2", path: "/README2.md", status: "STARTED"}]
+    root_doc: Optional[str] = None
+    docs: Optional[
+        Dict[str, FirestoreDoc]] = None  # {doc_id_1: {id: "doc_id_1", path: "/README.md", status: "COMPLETED"}}
     version: Optional[str] = None  # commitId
     repo_name: Optional[str] = None
+    status: Optional[StatusEnum] = None
     owner: Optional[str] = None
 
 
@@ -63,6 +66,7 @@ class FirestoreBatchOpType(str, Enum):
     SET = 'SET'
     UPDATE = 'UPDATE'
     DELETE = 'DELETE'
+
 
 class FirestoreQuery(BaseModel):
     OP_STRING_EQUALS: ClassVar[str] = '=='
@@ -95,7 +99,7 @@ class GenerateFileDocsResponse(BaseModel):
 class GetFileDocsResponse(BaseModel):
     id: str
     github_url: str
-    status: DocStatusEnum
+    status: StatusEnum
     relative_path: str
     markdown_content: str | None
 
@@ -116,9 +120,13 @@ class UpdateFileDocsResponse(BaseModel):
 
 # LLM Generation Models
 
-class LlmDocSchema(BaseModel):
-    description: str = Field("Around 100 words about the code's purpose")
-    dependencies: List[str] = Field("Outside dependencies the code uses")
+class LlmFileDocSchema(BaseModel):
+    description: str = Field("Around 100 words about the code's purpose. Remember to be concise.")
+    # dependencies: List[str] = Field("Outside dependencies the code uses")
+
+
+class LlmFolderDocSchema(BaseModel):
+    description: str = Field("Around 100 words about the overall purpose. Remember to be concise.")
 
 
 # repo tree
@@ -127,7 +135,7 @@ class RepoNode(BaseModel):
     id: str
     path: str
     type: FirestoreDocType
-    completion_status: DocStatusEnum
+    completion_status: StatusEnum
     children: list['RepoNode'] = []
 
 
@@ -198,7 +206,7 @@ class GetRepoResponse(BaseModel):
 class ReposResponseModel(BaseModel):
     name: str
     id: str
-    status: List[Dict[str, DocStatusEnum]]
+    status: List[Dict[str, StatusEnum]]
 
 
 class GetReposResponse(BaseModel):

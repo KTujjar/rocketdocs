@@ -5,7 +5,7 @@ import uuid
 import firebase_admin
 from github.Repository import Repository
 
-from schemas.documentation_generation import FirestoreRepo, FirestoreDoc, DocStatusEnum
+from schemas.documentation_generation import FirestoreRepo, FirestoreDoc, StatusEnum
 from services.clients.anyscale_client import get_anyscale_client
 from services.data_service import DataService, get_data_service
 
@@ -27,40 +27,47 @@ class IdentifierService:
                 "Dockerfile",
                 "LICENSE",
                 "requirements.txt",
-                "test"
+                "test",
+                "go.sum",
+                "go.mod",
             ]
         ]
 
-    def identify(self, repository: Repository) -> FirestoreRepo:
+    def identify(self, repository: Repository, user_id: str) -> FirestoreRepo:
+        repo_id = str(uuid.uuid4())
+
         root = FirestoreDoc(
             id=str(uuid.uuid4()),
             github_url=repository.html_url,
             relative_path="",
             type="dir",
-            status=DocStatusEnum.NOT_STARTED
+            status=StatusEnum.NOT_STARTED,
+            repo=repo_id,
+            owner=user_id,
         )
 
-        docs = [root]
+        # docs = [root]
+        docs = {root.id: root}
         dependencies = {root.id: None}
 
         queue = [root]
         while queue:
             parent = queue.pop(0)
             contents = repository.get_contents(parent.relative_path)
-
             for content in contents:
                 if any(pattern.match(content.name) for pattern in self.exclude_files):
                     continue
-
                 firestore_doc = FirestoreDoc(
                     id=str(uuid.uuid4()),
                     github_url=content.html_url,
                     relative_path=content.path,
                     type=content.type,
                     size=content.size or None,
-                    status=DocStatusEnum.NOT_STARTED
+                    status=StatusEnum.NOT_STARTED,
+                    repo=repo_id,
+                    owner=user_id,
                 )
-                docs.append(firestore_doc)
+                docs[firestore_doc.id] = firestore_doc
 
                 if content.type == "dir":
                     queue.append(firestore_doc)
@@ -68,11 +75,13 @@ class IdentifierService:
                 dependencies[firestore_doc.id] = parent.id
 
         repo = FirestoreRepo(
-            id=str(uuid.uuid4()),
+            id=repo_id,
+            repo_name=repository.full_name,
+            root_doc=root.id,
+            status=StatusEnum.NOT_STARTED,
             dependencies=dependencies,
             docs=docs,
-            repo_name=repository.full_name,
-            root_doc=root.id
+            owner=user_id,
         )
         self.data_service.batch_create_repo(repo)
         return repo
