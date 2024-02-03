@@ -46,7 +46,6 @@ class IdentifierService:
             owner=user_id,
         )
 
-        # docs = [root]
         docs = {root.id: root}
         dependencies = {root.id: None}
 
