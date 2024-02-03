@@ -1,9 +1,7 @@
-import uuid
 from typing import Dict, Any, List, Optional
 
-from google.cloud.firestore_v1 import DocumentReference
 from openai.types import CompletionUsage
-from pydantic import BaseModel, constr, conlist, ValidationError, Field
+from pydantic import BaseModel, Field
 from enum import Enum
 import json
 
@@ -24,7 +22,7 @@ class GeneratedDoc(BaseModel):
 
 # Firestore Models
 
-class DocStatusEnum(str, Enum):
+class StatusEnum(str, Enum):
     NOT_STARTED = 'NOT STARTED'
     IN_PROGRESS = 'IN PROGRESS'
     COMPLETED = 'COMPLETED'
@@ -45,17 +43,18 @@ class FirestoreDoc(BaseModel):
     extracted_data: Optional[Dict[str, Any]] = None
     markdown_content: Optional[str] = None
     usage: Optional[CompletionUsage] = None
-    status: Optional[DocStatusEnum] = None
+    status: Optional[StatusEnum] = None
+    repo: Optional[str] = None
 
 
 class FirestoreRepo(BaseModel):
     id: Optional[str] = None
     dependencies: Optional[Dict[str, str | None]] = None
     root_doc: Optional[str] = None  # {id: "doc_id_1", path: "/README.md", status: "COMPLETED"}
-    docs: Optional[List[
-        FirestoreDoc]] = None  # [{id: "doc_id_1", path: "/README.md", status: "COMPLETED"}, {id: "doc_id_2", path: "/README2.md", status: "STARTED"}]
+    docs: Optional[Dict[str, FirestoreDoc]] = None  # [{id: "doc_id_1", path: "/README.md", status: "COMPLETED"}, {id: "doc_id_2", path: "/README2.md", status: "STARTED"}]
     version: Optional[str] = None  # commitId
     repo_name: Optional[str] = None
+    status: Optional[StatusEnum] = None
 
 
 class FirestoreBatchOpType(str, Enum):
@@ -87,7 +86,7 @@ class GenerateFileDocsResponse(BaseModel):
 class GetFileDocsResponse(BaseModel):
     id: str
     github_url: str
-    status: DocStatusEnum
+    status: StatusEnum
     relative_path: str
     markdown_content: str | None
 
@@ -108,9 +107,13 @@ class UpdateFileDocsResponse(BaseModel):
 
 # LLM Generation Models
 
-class LlmDocSchema(BaseModel):
-    description: str = Field("Around 100 words about the code's purpose")
-    dependencies: List[str] = Field("Outside dependencies the code uses")
+class LlmFileDocSchema(BaseModel):
+    description: str = Field("Around 100 words about the code's purpose. Remember to be concise.")
+    # dependencies: List[str] = Field("Outside dependencies the code uses")
+
+
+class LlmFolderDocSchema(BaseModel):
+    description: str = Field("Around 100 words about the overall purpose. Remember to be concise.")
 
 
 # repo tree
@@ -119,7 +122,7 @@ class RepoNode(BaseModel):
     id: str
     path: str
     type: FirestoreDocType
-    completion_status: DocStatusEnum
+    completion_status: StatusEnum
     children: list['RepoNode'] = []
 
 
@@ -189,7 +192,7 @@ class GetRepoResponse(BaseModel):
 class ReposResponseModel(BaseModel):
     name: str
     id: str
-    status: List[Dict[str, DocStatusEnum]]
+    status: List[Dict[str, StatusEnum]]
 
 
 class GetReposResponse(BaseModel):

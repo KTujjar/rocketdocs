@@ -11,7 +11,7 @@ from google.cloud.firestore_v1.client import Client
 from google.cloud.storage import Blob
 from pydantic import BaseModel
 
-from schemas.documentation_generation import DocStatusEnum, FirestoreDoc, FirestoreBatchOp, FirestoreBatchOpType, \
+from schemas.documentation_generation import StatusEnum, FirestoreDoc, FirestoreBatchOp, FirestoreBatchOpType, \
     FirestoreRepo
 
 
@@ -41,15 +41,26 @@ class DataService:
         return document_ref.id
 
     def update_documentation(self, doc_id: str, data) -> None:
-        self._update(
-            self.DOCUMENTATION_COLLECTION,
-            doc_id,
-            data
-        )
+        if isinstance(data, BaseModel):
+            data = data.model_dump(exclude_none=True)
+
+        self._update(self.DOCUMENTATION_COLLECTION, doc_id, data)
+        doc = self.get_documentation(doc_id)
+
+        if doc.repo:
+            repo_doc_ref = self.db.collection(self.REPO_COLLECTION).document(doc.repo)
+            repo_doc = repo_doc_ref.get().to_dict()
+
+            # Update specific fields in the nested docs field
+            for key in ["status", "github_url", "id", "relative_path", "type"]:
+                if key in data:
+                    repo_doc["docs"][doc.id][key] = data[key]
+
+            repo_doc_ref.update({"docs": repo_doc["docs"]})
 
     def delete_documentation(self, doc_id: str) -> None:
         doc = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
-        if doc.get("status") == DocStatusEnum.IN_PROGRESS:
+        if doc.get("status") == StatusEnum.IN_PROGRESS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail=f"Data is still being generated for this id, so it cannot be deleted yet.")
         self._delete(
@@ -64,20 +75,25 @@ class DataService:
         )
         return document_ref.id
 
+    def update_repo(self, repo_id: str, data) -> None:
+        if isinstance(data, BaseModel):
+            data = data.model_dump(exclude_none=True)
+        self._update(self.REPO_COLLECTION, repo_id, data)
+
     def batch_create_repo(self, repo: FirestoreRepo) -> str:
         batch_ops = [
             FirestoreBatchOp(
                 type=FirestoreBatchOpType.SET,
                 reference=self.db.collection(self.REPO_COLLECTION).document(repo.id),
-                data=repo.model_dump()
+                data=repo.model_dump(exclude_none=True)
             )
         ]
-        for doc in repo.docs:
+        for doc in repo.docs.values():
             batch_ops.append(
                 FirestoreBatchOp(
                     type=FirestoreBatchOpType.SET,
                     reference=self.db.collection(self.DOCUMENTATION_COLLECTION).document(doc.id),
-                    data=doc.model_dump(exclude_unset=True)
+                    data=doc.model_dump(exclude_none=True)
                 )
             )
         self._perform_batch(batch_ops)
@@ -122,8 +138,6 @@ class DataService:
 
     def _update(self, collection_path, document_id, data) -> None:
         document_ref = self.db.collection(collection_path).document(document_id)
-        if isinstance(data, BaseModel):
-            data = data.model_dump()
         document_ref.update(data)
 
     def _delete(self, collection_path, document_id) -> None:

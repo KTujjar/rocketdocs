@@ -26,7 +26,7 @@ async def generate_file_docs(
                             detail="Required field 'github_url' is missing.")
 
     github_file = github_service.get_file_from_url(request.github_url)
-    doc_id = documentation_service.enqueue_generate_doc_job(
+    doc_id = documentation_service.enqueue_generate_file_doc_job(
         background_tasks,
         github_file,
         model
