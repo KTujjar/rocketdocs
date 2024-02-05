@@ -140,13 +140,13 @@ class DataService:
     def batch_delete_user_repo(self, user_id: str, repo_id: str) -> str:
         repo = FirestoreRepo(**self.get_user_repo(user_id, repo_id))
 
-        if repo.status == StatusEnum.IN_PROGRESS:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail=f"Data is still being generated for this repo, so it cannot be deleted yet.")
-
         if repo.owner != user_id:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                                 detail=f"{user_id} is not the owner of repo with id {repo_id}.")
+
+        if repo.status == StatusEnum.IN_PROGRESS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Data is still being generated for this repo, so it cannot be deleted yet.")
 
         batch_ops = []
 
