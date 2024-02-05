@@ -323,10 +323,18 @@ class DocumentationService:
         repo_name: str = repo_response.repo_name
         repo_id: str = repo_response.id
         owner_id: str = repo_response.owner
+        repo_status: StatusEnum = repo_response.status
         dependencies: dict[str, str] = repo_response.dependencies
         docs: list[FirestoreDoc] = list(repo_response.docs.values())
 
-        repo_formatted = RepoFormatted(name=repo_name, id=repo_id, owner_id=owner_id, tree=[], nodes_map={})
+        repo_formatted = RepoFormatted(
+            name=repo_name,
+            id=repo_id,
+            owner_id=owner_id,
+            tree=[],
+            nodes_map={},
+            status=repo_status
+        )
 
         def find_doc_by_id(doc_list: list[FirestoreDoc], doc_id) -> FirestoreDoc | None:
             for doc in doc_list:
@@ -361,7 +369,7 @@ class DocumentationService:
         return repo_formatted
 
     @staticmethod
-    def get_repo_status(repo_response: FirestoreRepo) -> list[dict[str, StatusEnum]]:
+    def get_repo_docs_status(repo_response: FirestoreRepo) -> list[dict[str, StatusEnum]]:
         docs = repo_response.docs
 
         repo_status = [{doc.id: doc.status} for doc in docs.values()]

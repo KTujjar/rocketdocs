@@ -29,7 +29,8 @@ async def get_repos(
         ReposResponseModel(
             name=repo.repo_name,
             id=repo.id,
-            status=DocumentationService.get_repo_status(repo)
+            status=repo.status,
+            docs_status=DocumentationService.get_repo_docs_status(repo)
         )
         for repo in repos
     ]

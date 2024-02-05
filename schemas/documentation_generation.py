@@ -54,7 +54,8 @@ class FirestoreRepo(BaseModel):
     id: Optional[str] = None
     dependencies: Optional[Dict[str, str | None]] = None
     root_doc: Optional[str] = None
-    docs: Optional[Dict[str, FirestoreDoc]] = None  # {doc_id_1: {id: "doc_id_1", path: "/README.md", status: "COMPLETED"}}
+    docs: Optional[
+        Dict[str, FirestoreDoc]] = None  # {doc_id_1: {id: "doc_id_1", path: "/README.md", status: "COMPLETED"}}
     version: Optional[str] = None  # commitId
     repo_name: Optional[str] = None
     status: Optional[StatusEnum] = None
@@ -142,6 +143,7 @@ class RepoFormatted(BaseModel):
     name: str
     id: str
     owner_id: str
+    status: StatusEnum
     tree: list[RepoNode]
     nodes_map: dict[str, RepoNode] = Field(exclude=True)  # id to RepoNode
 
@@ -199,6 +201,7 @@ class RepoFormatted(BaseModel):
 class GetRepoResponse(BaseModel):
     repo: RepoFormatted
 
+
 # DELETE /repos/{repo_id}
 class DeleteRepoResponse(BaseModel):
     message: str
@@ -210,7 +213,8 @@ class DeleteRepoResponse(BaseModel):
 class ReposResponseModel(BaseModel):
     name: str
     id: str
-    status: List[Dict[str, StatusEnum]]
+    status: StatusEnum
+    docs_status: List[Dict[str, StatusEnum]]
 
 
 class GetReposResponse(BaseModel):
@@ -226,4 +230,3 @@ class CreateRepoDocsRequest(BaseModel):
 class CreateRepoDocsResponse(BaseModel):
     message: str
     id: str
-
