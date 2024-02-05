@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from starlette import status
 
 from schemas.documentation_generation import GetRepoResponse, GetReposResponse, ReposResponseModel, \
-    CreateRepoDocsRequest, CreateRepoDocsResponse, FirestoreRepo, LlmModelEnum, GetFileDocsResponse
+    CreateRepoDocsRequest, CreateRepoDocsResponse, FirestoreRepo, LlmModelEnum, GetFileDocsResponse, \
+    DeleteRepoResponse
 from services.documentation_service import DocumentationService, get_documentation_service
 from routers.utils.auth import get_user_token
 from services.github_service import GithubService, get_github_service
@@ -51,6 +52,21 @@ async def get_repo(
     return GetRepoResponse(repo=repo_formatted)
 
 
+@router.delete("/repos/{repo_id}")
+async def delete_repo(
+        repo_id: str,
+        data_service: DataService = Depends(get_data_service),
+        user: Dict[str, Any] = Depends(get_user_token),
+) -> DeleteRepoResponse:
+    user_id = user.get("uid")
+
+    repo_id = data_service.batch_delete_user_repo(user_id, repo_id)
+    
+    return DeleteRepoResponse(
+        message=f"The data associated with id='{repo_id}' was deleted.",
+        id=repo_id
+    )
+
 @router.get("/repos/{repo_id}/{doc_id}")
 async def get_repo_doc(
         repo_id: str,
@@ -91,3 +107,4 @@ async def create_repo_docs(
         id=firestore_repo.id
     )
 
+GetRepoResponse
