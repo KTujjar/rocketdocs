@@ -85,7 +85,7 @@ class DataService:
             doc_id
         )
 
-    def delete_user_documentation(self, user_id, doc_id) -> None:
+    def delete_user_documentation(self, user_id: str, doc_id: str) -> None:
         doc = self._get(self.DOCUMENTATION_COLLECTION, doc_id)
 
         if not doc:
@@ -103,6 +103,7 @@ class DataService:
             self.DOCUMENTATION_COLLECTION,
             doc_id
         )
+
 
     def add_repo(self, data) -> str:
         document_ref = self._add(
@@ -135,6 +136,39 @@ class DataService:
         self._perform_batch(batch_ops)
 
         return repo.id
+
+    def batch_delete_user_repo(self, user_id: str, repo_id: str) -> str:
+        repo = FirestoreRepo(**self.get_user_repo(user_id, repo_id))
+
+        if repo.status == StatusEnum.IN_PROGRESS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Data is still being generated for this repo, so it cannot be deleted yet.")
+
+        if repo.owner != user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail=f"{user_id} is not the owner of repo with id {repo_id}.")
+
+        batch_ops = []
+
+        for doc in repo.docs.values():
+            batch_ops.append(
+                FirestoreBatchOp(
+                    type=FirestoreBatchOpType.DELETE,
+                    reference=self.db.collection(self.DOCUMENTATION_COLLECTION).document(doc.id)
+                )
+            )
+
+        batch_ops.append(
+            FirestoreBatchOp(
+                type=FirestoreBatchOpType.DELETE,
+                reference=self.db.collection(self.REPO_COLLECTION).document(repo.id)
+            )
+        )
+
+        self._perform_batch(batch_ops)
+
+        return repo.id
+
 
     def get_repo(self, repo_id) -> Dict[str, Any]:
         repo = self._get(self.REPO_COLLECTION, repo_id)
