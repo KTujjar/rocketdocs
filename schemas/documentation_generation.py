@@ -1,5 +1,5 @@
 import uuid
-from typing import ClassVar, Dict, Any, List, Optional
+from typing import ClassVar, Dict, Any, List, Optional, Type
 
 from google.cloud.firestore_v1 import DocumentReference
 from openai.types import CompletionUsage
@@ -8,21 +8,25 @@ from enum import Enum
 import json
 
 
+class LlmProvider(str, Enum):
+    OPENAI = "OPENAI"
+    ANYSCALE = "ANYSCALE"
+
+
 class LlmModelEnum(str, Enum):
     MIXTRAL = 'mistralai/Mixtral-8x7B-Instruct-v0.1'
     MISTRAL = 'mistralai/Mistral-7B-Instruct-v0.1'
     MISTRAL_ORCA = 'Open-Orca/Mistral-7B-OpenOrca'
     LLAMA_7B = 'meta-llama/Llama-2-7b-chat-hf'
+    GPT3_TURBO = 'gpt-3.5-turbo-0125'
+    GPT4_TURBO = 'gpt-4-turbo-preview'
 
+    def belongs_to(self) -> LlmProvider:
+        if self in [LlmModelEnum.GPT3_TURBO, LlmModelEnum.GPT4_TURBO]:
+            return LlmProvider.OPENAI
+        elif self in [LlmModelEnum.MIXTRAL, LlmModelEnum.MISTRAL, LlmModelEnum.MISTRAL_ORCA, LlmModelEnum.LLAMA_7B]:
+            return LlmProvider.ANYSCALE
 
-class GeneratedDoc(BaseModel):
-    relative_path: str
-    usage: CompletionUsage
-    extracted_data: Dict[str, Any]
-    markdown_content: str
-
-
-# Firestore Models
 
 class StatusEnum(str, Enum):
     NOT_STARTED = 'NOT STARTED'
@@ -30,6 +34,8 @@ class StatusEnum(str, Enum):
     COMPLETED = 'COMPLETED'
     FAILED = 'FAILED'
 
+
+# Firestore Models
 
 class FirestoreDocType(str, Enum):
     FILE = 'file'
@@ -119,6 +125,19 @@ class UpdateFileDocsResponse(BaseModel):
 
 
 # LLM Generation Models
+
+class GeneratedDoc(BaseModel):
+    relative_path: str
+    usage: CompletionUsage
+    extracted_data: Dict[str, Any]
+    markdown_content: str
+
+
+class LlmJsonResponse(BaseModel):
+    content: BaseModel
+    usage: CompletionUsage
+    finish_reason: str
+
 
 class LlmFileDocSchema(BaseModel):
     description: str = Field("Around 100 words about the code's purpose. Remember to be concise.")
