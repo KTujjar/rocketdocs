@@ -360,7 +360,7 @@ class DocumentationService:
             return await asyncio.gather(*coroutines, return_exceptions=True)
 
 
-def get_documentation_service(model: LlmModelEnum) -> DocumentationService:
+def get_documentation_service(model: LlmModelEnum = LlmModelEnum.MIXTRAL) -> DocumentationService:
     """Initializes the service with any dependencies it needs."""
     if model.belongs_to() == LlmProvider.OPENAI:
         llm_client = get_openai_client()
