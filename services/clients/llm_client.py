@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Dict, Any, Type
 
 from openai.types.chat import ChatCompletion
+from pydantic import BaseModel
+
+from schemas.documentation_generation import LlmJsonResponse
 
 
 class LLMClient(ABC):
@@ -11,6 +14,7 @@ class LLMClient(ABC):
             model: str,
             prompt: str,
             system_prompt: str,
+            temperature: float = 1.0,
             max_tokens: int | None = None
     ) -> ChatCompletion:
         """Abstract method for generating text."""
@@ -21,8 +25,10 @@ class LLMClient(ABC):
             self, model: str,
             prompt: str,
             system_prompt: str,
-            response_schema: Dict[str, Any],
+            response_model: Type[BaseModel],
+            temperature: float = 1.0,
+            max_retries: int = 1,
             max_tokens: int | None = None,
-    ) -> ChatCompletion:
+    ) -> LlmJsonResponse:
         """Abstract method for generating JSON."""
         pass
