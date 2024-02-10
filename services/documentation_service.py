@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 from services.clients.llm_client import LLMClient
 from services.github_service import GithubService, get_github_service
-from services.prompts import ONE_SHOT_FILE_SYS_PROMPT, FILE_JSON_SYS_PROMPT, FOLDER_JSON_SYS_PROMPT, \
+from services._prompts import ONE_SHOT_FILE_SYS_PROMPT, FILE_JSON_SYS_PROMPT, FOLDER_JSON_SYS_PROMPT, \
     NO_SHOT_FOLDER_SYS_PROMPT
 
 
