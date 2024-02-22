@@ -75,8 +75,8 @@ print('Marks obtained:',mark)
 Finally, the script thanks the user for playing and prints their score before exiting.
 [END OF EXPECTED RESPONSE]"""
 
-NO_SHOT_FOLDER_SYS_PROMPT = """Your job is to format received input into concise documentation. Respond in Markdown text."""
+NO_SHOT_FOLDER_SYS_PROMPT = """Your job is to generate concise high-level documentation of a folder given its contents. Respond in Markdown text. The first heading will be a small summary of the folder's purpose."""
 
 # For JSON responses
-FILE_JSON_SYS_PROMPT = """Your job is to generate concise high-level documentation of a file, based on its code. Respond in JSON."""
-FOLDER_JSON_SYS_PROMPT = """Your job is to generate concise high-level documentation of a folder, based on the description of its contents. Respond in JSON."""
+NO_SHOT_FILE_JSON_SYS_PROMPT = """Your job is to generate concise high-level documentation of a file, based on its code. Respond concisely. Output JSON."""
+NO_SHOT_FOLDER_JSON_SYS_PROMPT = """Your job is to generate concise high-level documentation of a folder given its contents. Respond in JSON."""

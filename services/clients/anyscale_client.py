@@ -1,4 +1,4 @@
-import json
+import simplejson as json
 import os
 from typing import Type
 
@@ -66,8 +66,8 @@ class AnyscaleClient(LLMClient):
         try:
             parsed_json = json.loads(completion.choices[0].message.content)
             content = response_model(**parsed_json)
-        except json.JSONDecodeError:
-            raise RuntimeError("LLM output not parsable")
+        except json.JSONDecodeError as e:
+            raise ValueError("LLM output not parsable")
 
         llm_json_response = LlmJsonResponse(
             content=content,
