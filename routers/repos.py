@@ -123,7 +123,7 @@ async def create_repo_docs(
     )
 
 
-@router.post("/repos/upload")
+@router.post("/repos/identify")
 async def upload_repo(
     request: UploadRepoRequest,
     identifier_service: IdentifierService = Depends(get_identifier_service),
