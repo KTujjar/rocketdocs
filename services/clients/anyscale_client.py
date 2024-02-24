@@ -1,8 +1,9 @@
 import simplejson as json
 import os
-from typing import Type
+from typing import List, Type, Union
 
 from openai.types.chat import ChatCompletion
+from openai.types import CreateEmbeddingResponse
 from pydantic import BaseModel
 
 from schemas.documentation_generation import LlmJsonResponse
@@ -76,6 +77,20 @@ class AnyscaleClient(LLMClient):
         )
 
         return llm_json_response
+    
+    async def generate_embedding(
+            self, 
+            model: str, 
+            input: Union[str, List[str], List[int], List[List[int]]]
+    ) -> CreateEmbeddingResponse:
+        if isinstance(input, list) and len(input) > 2048:
+            raise ValueError("Input is too long, maximum batch size is 2048 embeddings")
+        embedding = await self.anyscale.embeddings.create(
+            model=model,
+            input=input
+        )
+        return embedding
+    
 
 
 def get_anyscale_client():

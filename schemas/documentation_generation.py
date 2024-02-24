@@ -30,6 +30,9 @@ class LlmModelEnum(str, Enum):
         ]:
             return LlmProvider.ANYSCALE
 
+class EmbeddingModelEnum(str, Enum):
+    BGE_LARGE = "BAAI/bge-large-en-v1.5",
+    GTE_LARGE = "thenlper/gte-large"
 
 class StatusEnum(str, Enum):
     NOT_STARTED = "NOT STARTED"
