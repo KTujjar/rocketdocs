@@ -1,9 +1,7 @@
-import uuid
-from typing import ClassVar, Dict, Any, List, Optional, Type
+from typing import ClassVar, Dict, Any, List, Optional
 
-from google.cloud.firestore_v1 import DocumentReference
 from openai.types import CompletionUsage
-from pydantic import BaseModel, constr, conlist, ValidationError, Field
+from pydantic import BaseModel, Field
 from enum import Enum
 import json
 

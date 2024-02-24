@@ -5,12 +5,16 @@ from typing import Coroutine, List, Any, Dict, Optional
 from collections import defaultdict
 
 import firebase_admin
+import marko
+from bs4 import BeautifulSoup
 from github.ContentFile import ContentFile
+from marko.block import Heading
+from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
 
 from schemas.documentation_generation import StatusEnum, \
-    GeneratedDoc, LlmModelEnum, LlmFileDocSchema, \
-    FirestoreDoc, FirestoreRepo, FirestoreDocType, LlmFolderDocSchema, LlmProvider, LlmJsonResponse
+    GeneratedDoc, LlmModelEnum, \
+    FirestoreDoc, FirestoreRepo, FirestoreDocType, LlmProvider, LlmJsonResponse
 from services.clients.anyscale_client import get_anyscale_client
 from services.clients.openai_client import get_openai_client
 from services.data_service import DataService, get_data_service
@@ -20,7 +24,7 @@ from dotenv import load_dotenv
 
 from services.clients.llm_client import LLMClient
 from services.github_service import GithubService, get_github_service
-from services._prompts import ONE_SHOT_FILE_SYS_PROMPT, FILE_JSON_SYS_PROMPT, FOLDER_JSON_SYS_PROMPT, \
+from services._prompts import ONE_SHOT_FILE_SYS_PROMPT, NO_SHOT_FILE_JSON_SYS_PROMPT, NO_SHOT_FOLDER_JSON_SYS_PROMPT, \
     NO_SHOT_FOLDER_SYS_PROMPT
 
 
@@ -29,8 +33,8 @@ class DocumentationService:
         self.llm_client = llm_client
         self.github_service = github_service
         self.data_service = data_service
-        self.system_prompt_for_file_json = FILE_JSON_SYS_PROMPT
-        self.system_prompt_for_folder_json = FOLDER_JSON_SYS_PROMPT
+        self.system_prompt_for_file_json = NO_SHOT_FILE_JSON_SYS_PROMPT
+        self.system_prompt_for_folder_json = NO_SHOT_FOLDER_JSON_SYS_PROMPT
         self.system_prompt_for_folder_markdown = NO_SHOT_FOLDER_SYS_PROMPT
         self.system_prompt_for_file_markdown = ONE_SHOT_FILE_SYS_PROMPT
 
@@ -214,34 +218,12 @@ class DocumentationService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail="File cannot be empty")
 
-        # currently user_prompt is used for both the JSON and Markdown calls
-        user_prompt = f"Document the following code file titled {file.path}\n\n{file.decoded_content}"
-
-        llm_json_response = await self.llm_client.generate_json(
-            model=model,
-            prompt=user_prompt,
-            system_prompt=self.system_prompt_for_file_json,
-            response_model=LlmFileDocSchema,
-            max_retries=1,
-            max_tokens=2048
-        )
-        llm_json_response = self._validate_llm_json_response(llm_json_response)
-
-        json_content = llm_json_response.content.model_dump()
-
-        markdown_content = await self.llm_client.generate_text(
-            model=model,
-            prompt=user_prompt,
-            system_prompt=self.system_prompt_for_file_markdown,
-            max_tokens=2048
-        )
-        markdown_content = self._validate_llm_markdown_response(markdown_content)
-
-        return GeneratedDoc(
-            relative_path=file.path,
-            usage=llm_json_response.usage,
-            extracted_data=json_content,
-            markdown_content=markdown_content
+        user_prompt_markdown = f"Document the following code file titled {file.path}\n\n{file.decoded_content}"
+        return await self._generate_doc_with_fallback(
+            model,
+            user_prompt_markdown,
+            self.system_prompt_for_file_markdown,
+            file.path
         )
 
     async def _generate_doc_for_folder(
@@ -252,38 +234,47 @@ class DocumentationService:
     ) -> GeneratedDoc:
         self._validate_folder_and_files(folder, files)
 
-        user_prompt = (
+        user_prompt_markdown = (
             "This is the root folder."
             if not folder.relative_path
             else f"This is the {folder.relative_path} folder."
         )
-        user_prompt += f" It contains:\n" + "\n".join(
+        user_prompt_markdown += f" It contains:\n" + "\n".join(
             f"{file.relative_path}: {file.extracted_data.get('description')}" for file in files
         )
-        user_prompt += "\nRemember to respond in less than 100 words."
+        user_prompt_markdown += "\nRemember to respond concisely, but accurately."
 
-        llm_json_response = await self.llm_client.generate_json(
-            model=model,
-            prompt=user_prompt,
-            system_prompt=self.system_prompt_for_folder_json,
-            response_model=LlmFolderDocSchema,
-            max_tokens=2048
+        return await self._generate_doc_with_fallback(
+            model, user_prompt_markdown,
+            self.system_prompt_for_folder_markdown,
+            folder.relative_path
         )
 
-        json_content = llm_json_response.content.model_dump()
+    async def _generate_doc_with_fallback(self, model, user_prompt, system_prompt, path):
+        total_usage = {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0, }
+        json_content = None
 
-        markdown_prompt = json.dumps(json_content) + "\n Remember to be concise."
         markdown_content = await self.llm_client.generate_text(
             model=model,
-            prompt=markdown_prompt,
-            system_prompt=self.system_prompt_for_folder_markdown,
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            temperature=0.4,
             max_tokens=2048
         )
+        total_usage = self._combine_usage(total_usage, markdown_content.usage)
         markdown_content = self._validate_llm_markdown_response(markdown_content)
 
+        # If we fail to generate JSON, take the description from the Markdown
+        if not json_content:
+            description = self._extract_first_heading_content(markdown_content)
+            if not description:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                    detail="Failed to generate Markdown content")
+            json_content = {"description": description}
+
         return GeneratedDoc(
-            relative_path=folder.relative_path,
-            usage=llm_json_response.usage,
+            relative_path=path,
+            usage=CompletionUsage(**total_usage),
             extracted_data=json_content,
             markdown_content=markdown_content
         )
@@ -358,6 +349,29 @@ class DocumentationService:
             return tuple(results)
         else:
             return await asyncio.gather(*coroutines, return_exceptions=True)
+
+    @staticmethod
+    def _combine_usage(total: Dict[str, int], addition: CompletionUsage):
+        total["completion_tokens"] += addition.completion_tokens
+        total["prompt_tokens"] += addition.prompt_tokens
+        total["total_tokens"] += addition.total_tokens
+        return total
+
+    @staticmethod
+    def _extract_first_heading_content(markdown_content: str) -> str:
+        parsed = marko.parse(markdown_content)
+        found_heading = False
+        heading_content = []
+        for child in parsed.children:
+            if isinstance(child, Heading):
+                if found_heading:
+                    break
+                found_heading = True
+            html_output = marko.render(child)
+            text = BeautifulSoup(html_output, "html.parser").get_text()
+            heading_content.append(text)
+
+        return "".join(heading_content)
 
 
 def get_documentation_service(model: LlmModelEnum = LlmModelEnum.MIXTRAL) -> DocumentationService:
