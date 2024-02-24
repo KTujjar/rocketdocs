@@ -14,7 +14,7 @@ class TextChunker:
         chunk_minimum (int): The minimum number of tokens per chunk
         tokenizer (str): The name of the tokenizer to be used
     '''
-    def __init__(self, chunk_size=500, chunk_minimum=100, tokenizer="BAAI/bge-large-zh-v1.5"):
+    def __init__(self, chunk_size=250, chunk_minimum=50, tokenizer="BAAI/bge-large-zh-v1.5"):
         self.chunk_size = chunk_size
         self.chunk_minimum = chunk_minimum
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer)

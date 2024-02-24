@@ -1,5 +1,6 @@
 from pinecone import Pinecone
 from typing import List, Dict, Any, Optional, Union
+import os
 
 class PineconeClient:
     def __init__(self, api_key: str, index: str):
@@ -17,3 +18,7 @@ class PineconeClient:
     
     def describe(self, filter: Optional[Dict[str, Union[str, float, int, bool, List, dict]]] = None):
         return self.index.describe_index_stats(filter)
+    
+def get_pinecone_client():
+    api_key = os.getenv("PINECONE_API_KEY")
+    return PineconeClient(api_key, "rocketdocs-repos-1")

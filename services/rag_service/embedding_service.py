@@ -1,7 +1,7 @@
 from services.data_service import DataService, get_data_service
-from services.github_service import GithubService
-from services.clients.anyscale_client import AnyscaleClient
-from services.clients.pinecone_client import PineconeClient
+from services.github_service import GithubService, get_github_service
+from services.clients.anyscale_client import AnyscaleClient, get_anyscale_client
+from services.clients.pinecone_client import PineconeClient, get_pinecone_client
 from services.rag_service.text_chunker import TextChunker
 from fastapi import HTTPException, status
 from schemas.documentation_generation import FirestoreDoc, FirestoreRepo,EmbeddingModelEnum, StatusEnum
@@ -29,9 +29,9 @@ class EmbeddingService:
         self.text_chunker = text_chunker
 
     async def generate_markdown_embeddings_for_repo(self, repo_id: str, user_id: str):
-        namespaces = vector_database_client.describe()["namespaces"]
+        namespaces = self.vector_database_client.describe()["namespaces"]
         if (repo_id in namespaces):
-            # vector_database_client.delete(repo_id)
+            # self.vector_database_client.delete(repo_id)
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Repo already exists in the database, we're not going to re-embed it.")
         repo_dict = self.data_service.get_user_repo(user_id, repo_id)
         repo = FirestoreRepo(**repo_dict)
@@ -97,7 +97,20 @@ class EmbeddingService:
                     vectors = []
                 chunk_index += 1
                 
+def get_embedding_service():
+    embedding_client = get_anyscale_client()
+    vector_database_client = get_pinecone_client()
+    github_service = get_github_service()
+    data_service = get_data_service()
+    text_chunker = TextChunker()
 
+    return EmbeddingService(
+        embedding_client=embedding_client,
+        vector_database_client=vector_database_client,
+        github_service=github_service,
+        data_service=data_service,
+        text_chunker=text_chunker
+    )
 
 if __name__ == "__main__":
     load_dotenv()
@@ -105,19 +118,7 @@ if __name__ == "__main__":
         credential=None,
         options={"storageBucket": os.getenv("CLOUD_STORAGE_BUCKET")}
     )
-    anyscale_client = AnyscaleClient(api_key=os.getenv("ANYSCALE_API_KEY"))
-    vector_database_client = PineconeClient(api_key=os.getenv("PINECONE_API_KEY"), index="rocketdocs-repos-1")
-    github_service = GithubService(token=os.getenv("GITHUB_API_KEY"))
-    data_service = get_data_service()
-    text_chunker = TextChunker(chunk_size=250, chunk_minimum=50)
-
-    embedding_service = EmbeddingService(
-        embedding_client=anyscale_client,
-        vector_database_client=vector_database_client,
-        github_service=github_service,
-        data_service=data_service,
-        text_chunker=text_chunker
-    )
+    embedding_service = get_embedding_service()
 
     # repo_id = "-"
     # user_id = "-"
