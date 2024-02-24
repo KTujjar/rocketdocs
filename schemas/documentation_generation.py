@@ -12,32 +12,38 @@ class LlmProvider(str, Enum):
 
 
 class LlmModelEnum(str, Enum):
-    MIXTRAL = 'mistralai/Mixtral-8x7B-Instruct-v0.1'
-    MISTRAL = 'mistralai/Mistral-7B-Instruct-v0.1'
-    MISTRAL_ORCA = 'Open-Orca/Mistral-7B-OpenOrca'
-    LLAMA_7B = 'meta-llama/Llama-2-7b-chat-hf'
-    GPT3_TURBO = 'gpt-3.5-turbo-0125'
-    GPT4_TURBO = 'gpt-4-turbo-preview'
+    MIXTRAL = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    MISTRAL = "mistralai/Mistral-7B-Instruct-v0.1"
+    MISTRAL_ORCA = "Open-Orca/Mistral-7B-OpenOrca"
+    LLAMA_7B = "meta-llama/Llama-2-7b-chat-hf"
+    GPT3_TURBO = "gpt-3.5-turbo-0125"
+    GPT4_TURBO = "gpt-4-turbo-preview"
 
     def belongs_to(self) -> LlmProvider:
         if self in [LlmModelEnum.GPT3_TURBO, LlmModelEnum.GPT4_TURBO]:
             return LlmProvider.OPENAI
-        elif self in [LlmModelEnum.MIXTRAL, LlmModelEnum.MISTRAL, LlmModelEnum.MISTRAL_ORCA, LlmModelEnum.LLAMA_7B]:
+        elif self in [
+            LlmModelEnum.MIXTRAL,
+            LlmModelEnum.MISTRAL,
+            LlmModelEnum.MISTRAL_ORCA,
+            LlmModelEnum.LLAMA_7B,
+        ]:
             return LlmProvider.ANYSCALE
 
 
 class StatusEnum(str, Enum):
-    NOT_STARTED = 'NOT STARTED'
-    IN_PROGRESS = 'IN PROGRESS'
-    COMPLETED = 'COMPLETED'
-    FAILED = 'FAILED'
+    NOT_STARTED = "NOT STARTED"
+    IN_PROGRESS = "IN PROGRESS"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
 
 
 # Firestore Models
 
+
 class FirestoreDocType(str, Enum):
-    FILE = 'file'
-    DIRECTORY = 'dir'
+    FILE = "file"
+    DIRECTORY = "dir"
 
 
 class FirestoreDoc(BaseModel):
@@ -54,26 +60,41 @@ class FirestoreDoc(BaseModel):
     owner: Optional[str] = None
 
 
+class IdentifiedItemToDocument(BaseModel):
+    type: FirestoreDocType
+    id: str
+    path: str
+
+
 class FirestoreRepo(BaseModel):
     id: Optional[str] = None
     dependencies: Optional[Dict[str, str | None]] = None
     root_doc: Optional[str] = None
-    docs: Optional[
-        Dict[str, FirestoreDoc]] = None  # {doc_id_1: {id: "doc_id_1", path: "/README.md", status: "COMPLETED"}}
+    docs: Optional[Dict[str, FirestoreDoc]] = (
+        None  # {doc_id_1: {id: "doc_id_1", path: "/README.md", status: "COMPLETED"}}
+    )
     version: Optional[str] = None  # commitId
     repo_name: Optional[str] = None
     status: Optional[StatusEnum] = None
     owner: Optional[str] = None
 
+    def get_identified_docs(self) -> List[IdentifiedItemToDocument]:
+        if self.docs is None:
+            return []
+        return [
+            IdentifiedItemToDocument(id=doc.id, path=doc.relative_path, type=doc.type)
+            for doc in self.docs.values()
+        ]
+
 
 class FirestoreBatchOpType(str, Enum):
-    SET = 'SET'
-    UPDATE = 'UPDATE'
-    DELETE = 'DELETE'
+    SET = "SET"
+    UPDATE = "UPDATE"
+    DELETE = "DELETE"
 
 
 class FirestoreQuery(BaseModel):
-    OP_STRING_EQUALS: ClassVar[str] = '=='
+    OP_STRING_EQUALS: ClassVar[str] = "=="
 
     field_path: str
     op_string: str
@@ -89,6 +110,7 @@ class FirestoreBatchOp(BaseModel):
 
 # POST /file-docs
 
+
 class GenerateFileDocsRequest(BaseModel):
     github_url: str
 
@@ -100,6 +122,7 @@ class GenerateFileDocsResponse(BaseModel):
 
 # GET /file-docs/{id}
 
+
 class GetFileDocsResponse(BaseModel):
     id: str
     github_url: str
@@ -110,6 +133,7 @@ class GetFileDocsResponse(BaseModel):
 
 # DELETE /file-docs/{id}
 
+
 class DeleteFileDocsResponse(BaseModel):
     message: str
     id: str
@@ -117,12 +141,14 @@ class DeleteFileDocsResponse(BaseModel):
 
 # UPDATE /file-docs/{id}
 
+
 class UpdateFileDocsResponse(BaseModel):
     message: str
     id: str
 
 
 # LLM Generation Models
+
 
 class GeneratedDoc(BaseModel):
     relative_path: str
@@ -138,22 +164,27 @@ class LlmJsonResponse(BaseModel):
 
 
 class LlmFileDocSchema(BaseModel):
-    description: str = Field("Around 100 words about the code's purpose. Remember to be concise.")
+    description: str = Field(
+        "Around 100 words about the code's purpose. Remember to be concise."
+    )
     # dependencies: List[str] = Field("Outside dependencies the code uses")
 
 
 class LlmFolderDocSchema(BaseModel):
-    description: str = Field("Around 100 words about the overall purpose. Remember to be concise.")
+    description: str = Field(
+        "Around 100 words about the overall purpose. Remember to be concise."
+    )
 
 
 # repo tree
+
 
 class RepoNode(BaseModel):
     id: str
     path: str
     type: FirestoreDocType
     completion_status: StatusEnum
-    children: list['RepoNode'] = []
+    children: list["RepoNode"] = []
 
 
 class RepoFormatted(BaseModel):
@@ -164,17 +195,18 @@ class RepoFormatted(BaseModel):
     tree: list[RepoNode]
     nodes_map: dict[str, RepoNode] = Field(exclude=True)  # id to RepoNode
 
-    def insert_node(self,
-                    parent: FirestoreDoc,
-                    child: FirestoreDoc,
-                    ) -> None:
+    def insert_node(
+        self,
+        parent: FirestoreDoc,
+        child: FirestoreDoc,
+    ) -> None:
         if parent.id in self.nodes_map.keys():
             child_node = RepoNode(
                 id=child.id,
                 path=child.relative_path,
                 type=child.type,
                 completion_status=child.status,
-                children=[]
+                children=[],
             )  # place holder type and status
             self.nodes_map[parent.id].children.append(child_node)
             self.nodes_map[child.id] = child_node
@@ -185,14 +217,14 @@ class RepoFormatted(BaseModel):
                 path=child.relative_path,
                 type=child.type,
                 completion_status=child.status,
-                children=[]
+                children=[],
             )  # place holder type and status
             parent_node = RepoNode(
                 id=parent.id,
                 path=parent.relative_path,
                 type=parent.type,
                 completion_status=parent.status,
-                children=[child_node]
+                children=[child_node],
             )  # place holder type and status
             self.nodes_map[parent.id] = parent_node
             self.nodes_map[child.id] = child_node
@@ -215,6 +247,7 @@ class RepoFormatted(BaseModel):
 
 # GET /repos/{repo_id}
 
+
 class GetRepoResponse(BaseModel):
     repo: RepoFormatted
 
@@ -226,6 +259,7 @@ class DeleteRepoResponse(BaseModel):
 
 
 # GET /repos
+
 
 class ReposResponseModel(BaseModel):
     name: str
@@ -240,10 +274,36 @@ class GetReposResponse(BaseModel):
 
 # POST /repos
 
+
 class CreateRepoDocsRequest(BaseModel):
     github_url: str
 
 
 class CreateRepoDocsResponse(BaseModel):
+    message: str
+    id: str
+
+
+# POST /repos/upload
+
+
+class UploadRepoRequest(BaseModel):
+    github_url: str
+
+
+class UploadRepoResponse(BaseModel):
+    message: str
+    id: str
+    items_to_document: list[IdentifiedItemToDocument]
+    estimated_cost: Optional[int] = None
+
+
+# class GenerateRepoDocsRequest(BaseModel):
+# todo: add items_to_document field here for frontend to be able to send us the user modified list
+# would need to add a new status to files and have files we identified as no be denoted as such in docs field of firestore repo
+# items_to_document: list[IdentifiedItemToDocument]
+
+
+class GenerateRepoDocsResponse(BaseModel):
     message: str
     id: str
