@@ -61,6 +61,7 @@ class FirestoreDoc(BaseModel):
 
 
 class IdentifiedItemToDocument(BaseModel):
+    type: FirestoreDocType
     id: str
     path: str
 
@@ -81,7 +82,7 @@ class FirestoreRepo(BaseModel):
         if self.docs is None:
             return []
         return [
-            IdentifiedItemToDocument(id=doc.id, path=doc.relative_path)
+            IdentifiedItemToDocument(id=doc.id, path=doc.relative_path, type=doc.type)
             for doc in self.docs.values()
         ]
 
