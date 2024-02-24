@@ -27,6 +27,9 @@ class LlmModelEnum(str, Enum):
         elif self in [LlmModelEnum.MIXTRAL, LlmModelEnum.MISTRAL, LlmModelEnum.MISTRAL_ORCA, LlmModelEnum.LLAMA_7B]:
             return LlmProvider.ANYSCALE
 
+class EmbeddingModelEnum(str, Enum):
+    BGE_LARGE = "BAAI/bge-large-en-v1.5",
+    GTE_LARGE = "thenlper/gte-large"
 
 class StatusEnum(str, Enum):
     NOT_STARTED = 'NOT STARTED'
