@@ -119,5 +119,7 @@ if __name__ == "__main__":
         text_chunker=text_chunker
     )
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(embedding_service.generate_markdown_embeddings_for_repo("3153f0a7-09ef-4a12-be4f-3de3b8defda3", "qZ6GC61uBPha2bbMirUy3RgY6w92"))
+    # repo_id = "-"
+    # user_id = "-"
+    # loop = asyncio.get_event_loop()
+    # loop.run_until_complete(embedding_service.generate_markdown_embeddings_for_repo(repo_id, user_id))
