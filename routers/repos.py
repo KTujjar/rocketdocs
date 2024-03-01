@@ -24,6 +24,8 @@ from services.documentation_service import (
 from services.github_service import GithubService, get_github_service
 from services.identifier_service import IdentifierService, get_identifier_service
 from services.data_service import DataService, get_data_service
+from services.rag_service.embedding_service import EmbeddingService, get_embedding_service
+from services.rag_service.search_service import SearchService, get_search_service
 from routers import utils
 
 router = APIRouter()
@@ -82,6 +84,18 @@ async def delete_repo(
     )
 
 
+@router.get("/repos/{repo_id}/search")
+async def search_repo(
+    repo_id: str,
+    query: str,
+    search_service: SearchService = Depends(get_search_service),
+    user: Dict[str, Any] = Depends(utils.get_user_token),
+):
+    user_id = user.get("uid")
+    results = await search_service.search(repo_id, query, user_id)
+    return results
+
+
 @router.get("/repos/{repo_id}/{doc_id}")
 async def get_repo_doc(
     repo_id: str,
@@ -108,6 +122,7 @@ async def create_repo_docs(
     identifier_service: IdentifierService = Depends(get_identifier_service),
     github_service: GithubService = Depends(get_github_service),
     documentation_service: DocumentationService = Depends(get_documentation_service),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
     user: Dict[str, Any] = Depends(utils.get_user_token),
     model: LlmModelEnum = LlmModelEnum.MIXTRAL,
 ) -> CreateRepoDocsResponse:
@@ -117,7 +132,7 @@ async def create_repo_docs(
     documentation_service.enqueue_generate_repo_docs_job(
         background_tasks, firestore_repo, model
     )
-
+    background_tasks.add_task(embedding_service.generate_markdown_embeddings_for_repo, firestore_repo.id, user_id)
     return CreateRepoDocsResponse(
         message="Documentation generation has been started.", id=firestore_repo.id
     )
