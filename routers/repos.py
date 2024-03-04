@@ -8,8 +8,6 @@ from schemas.documentation_generation import (
     GetRepoResponse,
     GetReposResponse,
     ReposResponseModel,
-    CreateRepoDocsRequest,
-    CreateRepoDocsResponse,
     FirestoreRepo,
     LlmModelEnum,
     GetFileDocsResponse,
@@ -117,29 +115,6 @@ async def get_repo_doc(
     return GetFileDocsResponse(**doc.model_dump())
 
 
-@router.post("/repos")
-async def create_repo_docs(
-    request: CreateRepoDocsRequest,
-    background_tasks: BackgroundTasks,
-    identifier_service: IdentifierService = Depends(get_identifier_service),
-    github_service: GithubService = Depends(get_github_service),
-    documentation_service: DocumentationService = Depends(get_documentation_service),
-    embedding_service: EmbeddingService = Depends(get_embedding_service),
-    user: Dict[str, Any] = Depends(utils.get_user_token),
-    model: LlmModelEnum = LlmModelEnum.MIXTRAL,
-) -> CreateRepoDocsResponse:
-    user_id = user.get("uid")
-    github_repo = github_service.get_repo_from_url(request.github_url)
-    firestore_repo = identifier_service.identify(github_repo, user_id)
-    documentation_service.enqueue_generate_repo_docs_job(
-        background_tasks, firestore_repo, model
-    )
-    background_tasks.add_task(embedding_service.generate_markdown_embeddings_for_repo, firestore_repo.id, user_id)
-    return CreateRepoDocsResponse(
-        message="Documentation generation has been started.", id=firestore_repo.id
-    )
-
-
 @router.post("/repos/identify")
 async def upload_repo(
     request: UploadRepoRequest,
@@ -172,8 +147,12 @@ async def generate_repo_docs(
     repo_dict = data_service.get_user_repo(user_id, repo_id)
     repo = FirestoreRepo(**repo_dict)
 
-    documentation_service.enqueue_generate_repo_docs_job(background_tasks, repo, model)
-    background_tasks.add_task(embedding_service.generate_markdown_embeddings_for_repo, repo.id, user_id)
+    background_tasks.add_task(
+        documentation_service.generate_repo_docs_and_embed_background_task,
+        repo,
+        model,
+        user_id
+    )
 
     return GenerateRepoDocsResponse(
         message="Documentation generation has been started.", id=repo.id
