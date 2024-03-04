@@ -73,11 +73,13 @@ async def get_repo(
 async def delete_repo(
     repo_id: str,
     data_service: DataService = Depends(get_data_service),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
     user: Dict[str, Any] = Depends(utils.get_user_token),
 ) -> DeleteRepoResponse:
     user_id = user.get("uid")
 
     repo_id = data_service.batch_delete_user_repo(user_id, repo_id)
+    embedding_service.delete_repo(repo_id)
 
     return DeleteRepoResponse(
         message=f"The data associated with id='{repo_id}' was deleted.", id=repo_id
@@ -162,6 +164,7 @@ async def generate_repo_docs(
     background_tasks: BackgroundTasks,
     documentation_service: DocumentationService = Depends(get_documentation_service),
     data_service: DataService = Depends(get_data_service),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
     user: Dict[str, Any] = Depends(utils.get_user_token),
     model: LlmModelEnum = LlmModelEnum.MIXTRAL,
 ) -> GenerateRepoDocsResponse:
@@ -170,6 +173,7 @@ async def generate_repo_docs(
     repo = FirestoreRepo(**repo_dict)
 
     documentation_service.enqueue_generate_repo_docs_job(background_tasks, repo, model)
+    background_tasks.add_task(embedding_service.generate_markdown_embeddings_for_repo, repo.id, user_id)
 
     return GenerateRepoDocsResponse(
         message="Documentation generation has been started.", id=repo.id
