@@ -8,6 +8,7 @@ from schemas.documentation_generation import FirestoreDoc, FirestoreRepo,Embeddi
 from collections import deque 
 from routers import utils
 from dotenv import load_dotenv
+from pinecone.core.client.exceptions import NotFoundException
 import firebase_admin
 import os
 import asyncio
@@ -96,6 +97,12 @@ class EmbeddingService:
                     self.vector_database_client.upsert(vectors, repo_id)
                     vectors = []
                 chunk_index += 1
+    
+    def delete_repo(self, repo_id: str):
+        try:
+            self.vector_database_client.delete(repo_id)
+        except NotFoundException:
+            print(f"Can't delete repo with id '{repo_id}' because it never existed in Pinecone DB.")
                 
 def get_embedding_service():
     embedding_client = get_anyscale_client()

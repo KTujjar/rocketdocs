@@ -38,7 +38,7 @@ class TextChunker:
                 # Else if, we can merge with next chunk, merge
                 # Else just leave it alone
 
-                if i > 0 and self._len(processed_chunks[-1]) + self._len(chunks[i]) <= self.chunk_size:
+                if i > 0 and processed_chunks and self._len(processed_chunks[-1]) + self._len(chunks[i]) <= self.chunk_size:
                     processed_chunks[-1] += chunks[i]
                 elif i < len(chunks) - 1 and self._len(chunks[i]) + self._len(chunks[i+1]) <= self.chunk_size:
                     chunks[i+1] = chunks[i] + chunks[i+1]

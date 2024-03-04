@@ -8,8 +8,6 @@ from schemas.documentation_generation import (
     GetRepoResponse,
     GetReposResponse,
     ReposResponseModel,
-    CreateRepoDocsRequest,
-    CreateRepoDocsResponse,
     FirestoreRepo,
     LlmModelEnum,
     GetFileDocsResponse,
@@ -24,6 +22,8 @@ from services.documentation_service import (
 from services.github_service import GithubService, get_github_service
 from services.identifier_service import IdentifierService, get_identifier_service
 from services.data_service import DataService, get_data_service
+from services.rag_service.embedding_service import EmbeddingService, get_embedding_service
+from services.rag_service.search_service import SearchService, get_search_service
 from routers import utils
 
 router = APIRouter()
@@ -71,15 +71,29 @@ async def get_repo(
 async def delete_repo(
     repo_id: str,
     data_service: DataService = Depends(get_data_service),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
     user: Dict[str, Any] = Depends(utils.get_user_token),
 ) -> DeleteRepoResponse:
     user_id = user.get("uid")
 
     repo_id = data_service.batch_delete_user_repo(user_id, repo_id)
+    embedding_service.delete_repo(repo_id)
 
     return DeleteRepoResponse(
         message=f"The data associated with id='{repo_id}' was deleted.", id=repo_id
     )
+
+
+@router.get("/repos/{repo_id}/search")
+async def search_repo(
+    repo_id: str,
+    query: str,
+    search_service: SearchService = Depends(get_search_service),
+    user: Dict[str, Any] = Depends(utils.get_user_token),
+):
+    user_id = user.get("uid")
+    results = await search_service.search(repo_id, query, user_id)
+    return results
 
 
 @router.get("/repos/{repo_id}/{doc_id}")
@@ -99,28 +113,6 @@ async def get_repo_doc(
         )
 
     return GetFileDocsResponse(**doc.model_dump())
-
-
-@router.post("/repos")
-async def create_repo_docs(
-    request: CreateRepoDocsRequest,
-    background_tasks: BackgroundTasks,
-    identifier_service: IdentifierService = Depends(get_identifier_service),
-    github_service: GithubService = Depends(get_github_service),
-    documentation_service: DocumentationService = Depends(get_documentation_service),
-    user: Dict[str, Any] = Depends(utils.get_user_token),
-    model: LlmModelEnum = LlmModelEnum.MIXTRAL,
-) -> CreateRepoDocsResponse:
-    user_id = user.get("uid")
-    github_repo = github_service.get_repo_from_url(request.github_url)
-    firestore_repo = identifier_service.identify(github_repo, user_id)
-    documentation_service.enqueue_generate_repo_docs_job(
-        background_tasks, firestore_repo, model
-    )
-
-    return CreateRepoDocsResponse(
-        message="Documentation generation has been started.", id=firestore_repo.id
-    )
 
 
 @router.post("/repos/identify")
@@ -147,6 +139,7 @@ async def generate_repo_docs(
     background_tasks: BackgroundTasks,
     documentation_service: DocumentationService = Depends(get_documentation_service),
     data_service: DataService = Depends(get_data_service),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
     user: Dict[str, Any] = Depends(utils.get_user_token),
     model: LlmModelEnum = LlmModelEnum.MIXTRAL,
 ) -> GenerateRepoDocsResponse:
@@ -154,7 +147,12 @@ async def generate_repo_docs(
     repo_dict = data_service.get_user_repo(user_id, repo_id)
     repo = FirestoreRepo(**repo_dict)
 
-    documentation_service.enqueue_generate_repo_docs_job(background_tasks, repo, model)
+    background_tasks.add_task(
+        documentation_service.generate_repo_docs_and_embed_background_task,
+        repo,
+        model,
+        user_id
+    )
 
     return GenerateRepoDocsResponse(
         message="Documentation generation has been started.", id=repo.id
