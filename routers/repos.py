@@ -8,8 +8,6 @@ from schemas.documentation_generation import (
     GetRepoResponse,
     GetReposResponse,
     ReposResponseModel,
-    CreateRepoDocsRequest,
-    CreateRepoDocsResponse,
     FirestoreRepo,
     LlmModelEnum,
     GetFileDocsResponse,
@@ -17,6 +15,7 @@ from schemas.documentation_generation import (
     UploadRepoRequest,
     UploadRepoResponse,
 )
+from services.clients.pinecone_client import PineconeClient, get_pinecone_client
 from services.documentation_service import (
     DocumentationService,
     get_documentation_service,
@@ -29,7 +28,6 @@ from routers import utils
 router = APIRouter()
 
 
-# for now returns all repos ids, no users yet
 @router.get("/repos")
 async def get_repos(
     data_service: DataService = Depends(get_data_service),
@@ -71,11 +69,13 @@ async def get_repo(
 async def delete_repo(
     repo_id: str,
     data_service: DataService = Depends(get_data_service),
+    pinecone_client: PineconeClient = Depends(get_pinecone_client),
     user: Dict[str, Any] = Depends(utils.get_user_token),
 ) -> DeleteRepoResponse:
     user_id = user.get("uid")
 
     repo_id = data_service.batch_delete_user_repo(user_id, repo_id)
+    pinecone_client.delete(repo_id)
 
     return DeleteRepoResponse(
         message=f"The data associated with id='{repo_id}' was deleted.", id=repo_id
@@ -99,28 +99,6 @@ async def get_repo_doc(
         )
 
     return GetFileDocsResponse(**doc.model_dump())
-
-
-@router.post("/repos")
-async def create_repo_docs(
-    request: CreateRepoDocsRequest,
-    background_tasks: BackgroundTasks,
-    identifier_service: IdentifierService = Depends(get_identifier_service),
-    github_service: GithubService = Depends(get_github_service),
-    documentation_service: DocumentationService = Depends(get_documentation_service),
-    user: Dict[str, Any] = Depends(utils.get_user_token),
-    model: LlmModelEnum = LlmModelEnum.MIXTRAL,
-) -> CreateRepoDocsResponse:
-    user_id = user.get("uid")
-    github_repo = github_service.get_repo_from_url(request.github_url)
-    firestore_repo = identifier_service.identify(github_repo, user_id)
-    documentation_service.enqueue_generate_repo_docs_job(
-        background_tasks, firestore_repo, model
-    )
-
-    return CreateRepoDocsResponse(
-        message="Documentation generation has been started.", id=firestore_repo.id
-    )
 
 
 @router.post("/repos/identify")
@@ -154,7 +132,12 @@ async def generate_repo_docs(
     repo_dict = data_service.get_user_repo(user_id, repo_id)
     repo = FirestoreRepo(**repo_dict)
 
-    documentation_service.enqueue_generate_repo_docs_job(background_tasks, repo, model)
+    background_tasks.add_task(
+        documentation_service.generate_repo_docs_and_embed_background_task,
+        repo,
+        model,
+        user_id
+    )
 
     return GenerateRepoDocsResponse(
         message="Documentation generation has been started.", id=repo.id

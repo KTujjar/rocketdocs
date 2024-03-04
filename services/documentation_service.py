@@ -37,6 +37,7 @@ from services._prompts import (
     NO_SHOT_FOLDER_JSON_SYS_PROMPT,
     NO_SHOT_FOLDER_SYS_PROMPT,
 )
+from services.rag_service.embedding_service import EmbeddingService, get_embedding_service
 
 
 class DocumentationService:
@@ -45,10 +46,12 @@ class DocumentationService:
         llm_client: LLMClient,
         github_service: GithubService,
         data_service: DataService,
+        embed_service: EmbeddingService,
     ):
         self.llm_client = llm_client
         self.github_service = github_service
         self.data_service = data_service
+        self.embed_service = embed_service
         self.system_prompt_for_file_json = NO_SHOT_FILE_JSON_SYS_PROMPT
         self.system_prompt_for_folder_json = NO_SHOT_FOLDER_JSON_SYS_PROMPT
         self.system_prompt_for_folder_markdown = NO_SHOT_FOLDER_SYS_PROMPT
@@ -136,7 +139,7 @@ class DocumentationService:
 
         return doc_id
 
-    async def generate_repo_docs_background_task(
+    async def generate_repo_docs(
         self, firestore_repo: FirestoreRepo, model: LlmModelEnum
     ) -> None:
         self._validate_repo(firestore_repo)
@@ -177,19 +180,15 @@ class DocumentationService:
             firestore_repo.id, FirestoreRepo(status=StatusEnum.COMPLETED)
         )
 
-    def enqueue_generate_repo_docs_job(
-        self,
-        background_tasks: BackgroundTasks,
-        firestore_repo: FirestoreRepo,
-        model: LlmModelEnum,
+    async def generate_repo_docs_and_embed_background_task(
+            self,
+            firestore_repo: FirestoreRepo,
+            model: LlmModelEnum,
+            user_id: str,
     ):
-        self.data_service.update_repo(
-            firestore_repo.id, FirestoreRepo(status=StatusEnum.IN_PROGRESS)
-        )
-
-        background_tasks.add_task(
-            self.generate_repo_docs_background_task, firestore_repo, model
-        )
+        self.data_service.update_repo(firestore_repo.id, FirestoreRepo(status=StatusEnum.IN_PROGRESS))
+        await self.generate_repo_docs(firestore_repo, model)
+        await self.embed_service.generate_markdown_embeddings_for_repo(firestore_repo.id, user_id)
 
     def regenerate_doc(
         self,
@@ -426,7 +425,8 @@ def get_documentation_service(
 
     github_service = get_github_service()
     data_service = get_data_service()
-    return DocumentationService(llm_client, github_service, data_service)
+    embed_service = get_embedding_service()
+    return DocumentationService(llm_client, github_service, data_service, embed_service)
 
 
 # For manually testing this file
