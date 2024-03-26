@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Type
+from typing import Dict, List, Type
 
 import instructor
 from openai.types.chat import ChatCompletion
@@ -34,6 +34,22 @@ class OpenAIClient(LLMClient):
             temperature=temperature,
             max_tokens=max_tokens
         )
+        return completion
+    
+    async def generate_messages(
+            self, 
+            model: str,
+            messages: List[Dict[str, str]],
+            temperature: float = 1.0,
+            max_tokens: int | None = None
+    ) -> ChatCompletion:
+        completion = await self.openai.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+
         return completion
 
     # noinspection PyArgumentList
