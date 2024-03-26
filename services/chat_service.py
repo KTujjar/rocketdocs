@@ -14,7 +14,6 @@ import os
 import asyncio
 from collections import namedtuple
 
-Result = namedtuple('Result', ['output', 'final_answer'])
 Relevant_Doc = namedtuple('Relevant_Doc', ['score', 'doc_content', 'doc_path'])
 
 class WrongFormattingError(Exception):
@@ -38,7 +37,7 @@ class ChatService:
         self.documentation_service = documentation_service
         self.data_service = data_service
 
-    async def chat(self, repo_id: str, query: str, user_id: str, model: LlmModelEnum) -> str:
+    async def chat(self, repo_id: str, query: str, user_id: str, model: LlmModelEnum) -> AsyncGenerator[dict, None]:
         max_steps = 4
         chat_history = [{"role": "system", "content": CHATBOT_SYS_PROMPT}, {"role": "user", "content": f"Question: {query}"}]
     
@@ -52,17 +51,19 @@ class ChatService:
             llm_output = chat_completion.choices[0].message.content
             chat_history.append({"role": "assistant", "content": llm_output})
             try:
-                thought, action, result = await self.parse_step(llm_output, user_id, repo_id)
+                thought, action = self.parse_step(llm_output)
+                action, action_input = self.extract_action(action)
+                yield {"action": action, "output": action_input}
+                if (action == "Finish"):
+                    return
+                output = await self.execute_action(action, action_input, repo_id, user_id)
                 # print(f"Thought: {thought}")
                 # print(f"Action: {action}")
-                # print(f"Result: {result.output}")
+                # print(f"Result: {output}")
                 # print("=========================")
-                if (result.final_answer):
-                    # print("Final answer: " + result.output)
-                    return result.output
                 chat_history.pop()
                 chat_history.append({"role": "assistant", "content": f"Thought: {thought}\n\nAction: {action}"})
-                chat_history.append({"role": "user", "content": f"Result: {result.output}"})
+                chat_history.append({"role": "user", "content": f"Result: {output}"})
             except Exception as e:
                 # We could catch the custom error types and let the Agent fix its course but the prompt
                 # is good enough and remedying these errors that are far in between is doubling the runtime.
@@ -79,10 +80,10 @@ class ChatService:
             max_tokens=512,
         )
         llm_output = chat_completion.choices[0].message.content
-        return llm_output
+        yield {"action": "Finish", "output": llm_output}
         
         
-    async def parse_step(self, agent_output, user_id, repo_id):
+    def parse_step(self, agent_output):
         thought_start = agent_output.find('Thought')
         action_start = agent_output.find('Action')
         
@@ -93,8 +94,8 @@ class ChatService:
         
         thought = self.extract_step(agent_output[thought_start+len("Thought") : action_start])
         action = self.extract_step(agent_output[action_start+len("Action"):])
-        action, result = await self.extract_and_execute_action(action, user_id, repo_id)
-        return thought, action, result
+        
+        return thought, action
 
     def extract_step(self, unparsed_step):
         # Skip all spaces and leading colon if exists
@@ -103,19 +104,25 @@ class ChatService:
         step = step.strip('\'"')
         return step
     
-    async def extract_and_execute_action(self, action, user_id, repo_id):
+    def extract_action(self, action):
         if action.startswith("Search"):
             func_input = action[len("Search"):].strip(" []\"'")
-            func_output = await self.search(repo_id, func_input)
-            return f'Search["{func_input}"]', Result(func_output, False)
+            return "Search", func_input
         elif action.startswith("Finish"):
             func_input = action[len("Finish"):].strip(" []\"'")
-            return f'Finish["{func_input}"]', Result(func_input, True)
+            return "Finish", func_input
         raise InvalidAction('Cannot extract the Action type. Recall that the only allowed Actions types are Action: Search["Your Query Here"] or Action: Finish["Your Answer Here"]')
 
-    async def search(self, repo_id, input):
+    async def execute_action(self, action, input, repo_id, user_id):
+        if action == "Search":
+            return await self.search(repo_id, input, user_id)
+        elif action == "Finish":
+            return input
+        else:
+            raise InvalidAction('Cannot execute the Action. Recall that the only allowed Actions types are Search and Finish')
+
+    async def search(self, repo_id, input, user_id):
         search_results = await self.search_service.search(repo_id, input)
-            
         docs = {}
         for search_result in search_results:
             doc_id, score = search_result["doc_id"], search_result["score"]
@@ -146,8 +153,11 @@ if __name__ == "__main__":
     )
     chat_service = get_chat_service()
     repo_id = "3153f0a7-09ef-4a12-be4f-3de3b8defda3"
-    query = "how is the board created?"
+    query = "how can i create a game board object?"
     user_id = "qZ6GC61uBPha2bbMirUy3RgY6w92"
+    async def print_chat_contents():
+        async for content in chat_service.chat(repo_id, query, user_id, LlmModelEnum.MIXTRAL):
+            print(content)
     
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(chat_service.chat(repo_id, query, user_id, LlmModelEnum.MIXTRAL))
+    loop.run_until_complete(print_chat_contents())
