@@ -65,19 +65,62 @@ class IdentifierService:
             root_doc=root.id,
             status=StatusEnum.NOT_STARTED,
             dependencies=dependencies,
-            docs=docs,
+            docs=self._post_process_docs(dependencies, docs),
             owner=user_id,
         )
+
         self.data_service.batch_create_repo(repo)
         return repo
+
+    def _post_process_docs(self, dependencies, docs):
+        docs = self._remove_undocumentable_folders(dependencies, docs)
+
+        return docs
+
+    def _remove_undocumentable_folders(self, dependencies, docs):
+        def contains_only_empty_folders(folder_id, dependencies, docs):
+            """
+            Recursively checks if a folder or its subfolders contain only empty folders.
+            """
+            for doc_id, parent_id in dependencies.items():
+                if parent_id == folder_id and docs[doc_id].type == "dir":
+
+                    if not contains_only_empty_folders(doc_id, dependencies, docs):
+                        return False
+
+            # check if the folder contains any files or non-empty folders
+            contains_non_empty_items = any(
+                parent_id == folder_id and docs[doc_id].type != "dir"
+                for doc_id, parent_id in dependencies.items()
+            )
+            if contains_non_empty_items:
+                return False
+
+            return True
+
+        documentable_docs_list = [
+            doc_id
+            for doc_id, doc in docs.items()
+            if (
+                doc.type == "file"
+                or (
+                    doc.type == "dir"
+                    and not contains_only_empty_folders(doc.id, dependencies, docs)
+                )
+            )
+        ]
+
+        documentable_docs = {doc_id: docs[doc_id] for doc_id in documentable_docs_list}
+
+        return documentable_docs
 
     def _skip_node(self, node: ContentFile) -> bool:
         if node.type == "file":
             is_invalid_filename = (
-                    node.name.startswith(("_", "."))
-                    or node.name.endswith((".d.ts", ".d.js", ".min.js"))
-                    or re.search("test", node.name, re.IGNORECASE)
-                    or not re.match(self.include_pattern, node.name)
+                node.name.startswith(("_", "."))
+                or node.name.endswith((".d.ts", ".d.js", ".min.js"))
+                or re.search("test", node.name, re.IGNORECASE)
+                or not re.match(self.include_pattern, node.name)
             )
 
             # 99000 bytes is ~20k tokens (depending on the model)
@@ -86,9 +129,8 @@ class IdentifierService:
             return is_invalid_filename or is_too_large
 
         if node.type == "dir":
-            return (
-                node.name.startswith(("_", ".", "..", "node_modules"))
-                or re.search("test", node.name, re.IGNORECASE)
+            return node.name.startswith(("_", ".", "..", "node_modules")) or re.search(
+                "test", node.name, re.IGNORECASE
             )
 
         return False
@@ -103,8 +145,7 @@ def get_identifier_service() -> IdentifierService:
 if __name__ == "__main__":
     load_dotenv()
     firebase_app = firebase_admin.initialize_app(
-        credential=None,
-        options={"storageBucket": os.getenv("CLOUD_STORAGE_BUCKET")}
+        credential=None, options={"storageBucket": os.getenv("CLOUD_STORAGE_BUCKET")}
     )
 
     github = get_github_service()
