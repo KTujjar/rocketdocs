@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Type
+from typing import Dict, Any, List, Type
 
 from openai.types.chat import ChatCompletion
 from pydantic import BaseModel
@@ -18,6 +18,17 @@ class LLMClient(ABC):
             max_tokens: int | None = None
     ) -> ChatCompletion:
         """Abstract method for generating text."""
+        pass
+
+    @abstractmethod
+    async def generate_messages(
+            self,
+            model: str,
+            messages: List[Dict[str, str]],
+            temperature: float = 1.0,
+            max_tokens: int | None = None
+    ) -> ChatCompletion:
+        """Abstract method for a low-level interaction with the LLM inference client."""
         pass
 
     @abstractmethod
