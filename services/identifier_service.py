@@ -15,13 +15,87 @@ from services.github_service import get_github_service
 
 
 class IdentifierService:
+    exclude_dirs: list[str] = [
+        ".git",
+        ".github",
+        ".vscode",
+        "node_modules",
+        "venv",
+        "patch",
+        "packages/blobs",
+        "dist",
+    ]
+    exclude_exts: list[str] = [
+        ".min.js",
+        ".min.js.map",
+        ".min.css",
+        ".min.css.map",
+        ".tfstate",
+        ".tfstate.backup",
+        ".jar",
+        ".ipynb",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".download",
+        ".gif",
+        ".bmp",
+        ".tiff",
+        ".ico",
+        ".mp3",
+        ".wav",
+        ".wma",
+        ".ogg",
+        ".flac",
+        ".mp4",
+        ".avi",
+        ".mkv",
+        ".mov",
+        ".patch",
+        ".patch.disabled",
+        ".wmv",
+        ".m4a",
+        ".m4v",
+        ".3gp",
+        ".3g2",
+        ".rm",
+        ".swf",
+        ".flv",
+        ".iso",
+        ".bin",
+        ".tar",
+        ".zip",
+        ".7z",
+        ".gz",
+        ".rar",
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".ppt",
+        ".pptx",
+        ".svg",
+        ".parquet",
+        ".pyc",
+        ".pub",
+        ".pem",
+        ".ttf",
+        ".dfn",
+        ".dfm",
+        ".feature",
+        "sweep.yaml",
+        "pnpm-lock.yaml",
+        "LICENSE",
+        "poetry.lock",
+    ]
+
     def __init__(self, data_service: DataService):
         self.data_service = data_service
         self.include_pattern = r".*\.(py|js|ts|go|rb)$"
 
     def identify(self, repository: Repository, user_id: str) -> FirestoreRepo:
         repo_id = str(uuid.uuid4())
-
         root = FirestoreDoc(
             id=str(uuid.uuid4()),
             github_url=repository.html_url,
@@ -74,23 +148,22 @@ class IdentifierService:
     def _skip_node(self, node: ContentFile) -> bool:
         if node.type == "file":
             is_invalid_filename = (
-                    node.name.startswith(("_", "."))
-                    or node.name.endswith((".d.ts", ".d.js", ".min.js"))
-                    or re.search("test", node.name, re.IGNORECASE)
-                    or not re.match(self.include_pattern, node.name)
+                node.name.startswith(("_", "."))
+                or node.name.endswith(tuple(self.exclude_exts))
+                # or re.search("test", node.name, re.IGNORECASE)
+                # or not re.match(self.include_pattern, node.name)
             )
 
             # 99000 bytes is ~20k tokens (depending on the model)
             is_too_large = node.size > 99000
-
             return is_invalid_filename or is_too_large
-
         if node.type == "dir":
-            return (
-                node.name.startswith(("_", ".", "..", "node_modules"))
-                or re.search("test", node.name, re.IGNORECASE)
+            is_invalid_dirname = (
+                node.name.startswith(("."))
+                or any(node.path.endswith(exclude_dir) for exclude_dir in self.exclude_dirs)
             )
 
+            return is_invalid_dirname
         return False
 
 
@@ -110,8 +183,8 @@ if __name__ == "__main__":
     github = get_github_service()
     identifier = get_identifier_service()
 
-    # test_repo = github.get_repo_from_url("https://github.com/KTujjar/rocketdocs/")
-    # test_repo = identifier.identify(test_repo, "someone")
+    test_repo = github.get_repo_from_url("https://github.com/cs-discord-at-ucf/lion/tree/master")
+    test_repo = identifier.identify(test_repo, "someone")
     # print(test_repo)
     # print("YEETED: ", YEETED)
     # print("ACCEPTED: ", ACCEPTED)

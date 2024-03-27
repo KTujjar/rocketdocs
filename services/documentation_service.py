@@ -27,6 +27,7 @@ from services.clients.openai_client import get_openai_client
 from services.data_service import DataService, get_data_service
 from services.rag_service.embedding_service import EmbeddingService, get_embedding_service
 from fastapi import BackgroundTasks, HTTPException, status
+from transformers import AutoTokenizer
 
 from dotenv import load_dotenv
 
@@ -52,6 +53,7 @@ class DocumentationService:
         self.github_service = github_service
         self.data_service = data_service
         self.embedding_service = embedding_service
+        self.tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1")
         self.system_prompt_for_file_json = NO_SHOT_FILE_JSON_SYS_PROMPT
         self.system_prompt_for_folder_json = NO_SHOT_FOLDER_JSON_SYS_PROMPT
         self.system_prompt_for_folder_markdown = ONE_SHOT_FOLDER_SYS_PROMPT
@@ -232,8 +234,24 @@ class DocumentationService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="File cannot be empty"
             )
-
-        user_prompt_markdown = f"Document the following code file titled {file.path}\n\n{file.decoded_content}"
+        
+        file_content = file.decoded_content.decode("utf-8")
+        token_count = len(self.tokenizer.encode(file_content))
+        # 32k token limit
+        # ~850 for system prompt
+        # 2048 for max input
+        # With margin of error, we limit token count to 28k tokens.
+        if token_count > 28000:
+            extra_tokens = token_count - 28000
+            # Assume 4 chars = 1 token
+            estimated_chars = extra_tokens * 4
+            file_content = file_content[:len(file_content) - estimated_chars]
+            while len(self.tokenizer.encode(file_content)) > 28000:
+                # Delete 400 chars ~ 100 tokens
+                file_content = file_content[:len(file_content) - 400]
+            file_content += "\n..."
+        
+        user_prompt_markdown = f"Document the following code file titled {file.path}\n\n{file_content}"
         return await self._generate_doc_with_fallback(
             model, user_prompt_markdown, self.system_prompt_for_file_markdown, file.path
         )
@@ -430,13 +448,13 @@ if __name__ == "__main__":
     firebase_app = firebase_admin.initialize_app(
         credential=None, options={"storageBucket": os.getenv("CLOUD_STORAGE_BUCKET")}
     )
-    service = get_documentation_service(LlmModelEnum.GPT3_TURBO)
+    service = get_documentation_service(LlmModelEnum.MIXTRAL)
     github = get_github_service()
     test_file = github.get_file_from_url(
-        "https://github.com/carlos-jmh/miniDiscord/blob/main/chat/storage.go"
+        "https://github.com/cs-discord-at-ucf/lion/blob/master/src/app/__generated__/cat-breeds.json"
     )
 
     test_result = asyncio.run(
-        service._generate_doc_for_file(test_file, LlmModelEnum.GPT3_TURBO)
+        service._generate_doc_for_file(test_file, LlmModelEnum.MIXTRAL)
     )
     print(test_result)
