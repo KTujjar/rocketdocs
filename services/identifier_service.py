@@ -110,18 +110,13 @@ class IdentifierService:
         docs = {root.id: root}
         dependencies = {root.id: None}
 
-        COUNTER = 0
-
         queue = [root]
         while queue:
             parent = queue.pop(0)
             contents = repository.get_contents(parent.relative_path)
             for content in contents:
                 if self._skip_node(content):
-                    print("SKIPPING: " + content.name)
                     continue
-                print("IDENTIFIED: " + content.name)
-                COUNTER += 1
                 firestore_doc = FirestoreDoc(
                     id=str(uuid.uuid4()),
                     github_url=content.html_url,
@@ -149,8 +144,6 @@ class IdentifierService:
             owner=user_id,
         )
         self.data_service.batch_create_repo(repo)
-
-        print("DOCS TO BE GENERATED: ", COUNTER)
         return repo
 
     def _skip_node(self, node: ContentFile) -> bool:
@@ -198,6 +191,6 @@ if __name__ == "__main__":
     github = get_github_service()
     identifier = get_identifier_service()
 
-    test_repo = github.get_repo_from_url("https://github.com/cs-discord-at-ucf/lion")
-    test_repo = identifier.identify(test_repo, "arvZTbCzTHTGF8sjHYB3CZRkcfL2")
+    test_repo = github.get_repo_from_url("https://github.com/ryanata/rocketdocs-frontend")
+    test_repo = identifier.identify(test_repo, "someone")
     # print(test_repo)

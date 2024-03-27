@@ -86,7 +86,7 @@ class DocumentationService:
                     generated_doc = GeneratedDoc(
                         relative_path=doc.relative_path,
                         usage=None,
-                        extracted_data=None,
+                        extracted_data={"description": "Folder contains no valid dependencies."},
                         markdown_content="Folder contains no valid dependencies.",
                     )
             else:
@@ -355,11 +355,11 @@ class DocumentationService:
     def _validate_doc_and_dependencies(
         parent: FirestoreDoc, dependencies: List[FirestoreDoc]
     ) -> None:
-        if parent.type == FirestoreDocType.DIRECTORY and not dependencies:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Dependencies cannot be empty",
-            )
+        # if parent.type == FirestoreDocType.DIRECTORY and not dependencies:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        #         detail="Dependencies cannot be empty",
+        #     )
         for dep in dependencies:
             if dep.status != StatusEnum.COMPLETED:
                 raise HTTPException(
