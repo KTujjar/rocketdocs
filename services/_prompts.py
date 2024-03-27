@@ -75,7 +75,7 @@ print('Marks obtained:',mark)
 Finally, the script thanks the user for playing and prints their score before exiting.
 [END OF EXPECTED RESPONSE]"""
 
-NO_SHOT_FOLDER_SYS_PROMPT = """
+ONE_SHOT_FOLDER_SYS_PROMPT = """
 You are a highly skilled engineer tasked with writing documentation for a specific folder in a codebase. Clients will provide you with the following information:
 1. The name of the folder you need to document.
 2. The underlying files and folders in the folder, along with a short description of each.

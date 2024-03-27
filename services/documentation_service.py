@@ -36,7 +36,7 @@ from services._prompts import (
     ONE_SHOT_FILE_SYS_PROMPT,
     NO_SHOT_FILE_JSON_SYS_PROMPT,
     NO_SHOT_FOLDER_JSON_SYS_PROMPT,
-    NO_SHOT_FOLDER_SYS_PROMPT,
+    ONE_SHOT_FOLDER_SYS_PROMPT,
 )
 
 
@@ -54,7 +54,7 @@ class DocumentationService:
         self.embedding_service = embedding_service
         self.system_prompt_for_file_json = NO_SHOT_FILE_JSON_SYS_PROMPT
         self.system_prompt_for_folder_json = NO_SHOT_FOLDER_JSON_SYS_PROMPT
-        self.system_prompt_for_folder_markdown = NO_SHOT_FOLDER_SYS_PROMPT
+        self.system_prompt_for_folder_markdown = ONE_SHOT_FOLDER_SYS_PROMPT
         self.system_prompt_for_file_markdown = ONE_SHOT_FILE_SYS_PROMPT
 
     async def generate_doc(
