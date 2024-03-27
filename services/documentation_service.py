@@ -78,9 +78,17 @@ class DocumentationService:
                 file_content = self.github_service.get_file_from_url(doc.github_url)
                 generated_doc = await self._generate_doc_for_file(file_content, model)
             elif doc.type == FirestoreDocType.DIRECTORY:
-                generated_doc = await self._generate_doc_for_folder(
-                    doc, dep_docs, model
-                )
+                if dep_docs:
+                    generated_doc = await self._generate_doc_for_folder(
+                        doc, dep_docs, model
+                    )
+                else:
+                    generated_doc = GeneratedDoc(
+                        relative_path=doc.relative_path,
+                        usage=None,
+                        extracted_data={"description": "Folder contains no valid dependencies."},
+                        markdown_content="Folder contains no valid dependencies.",
+                    )
             else:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -347,11 +355,11 @@ class DocumentationService:
     def _validate_doc_and_dependencies(
         parent: FirestoreDoc, dependencies: List[FirestoreDoc]
     ) -> None:
-        if parent.type == FirestoreDocType.DIRECTORY and not dependencies:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Dependencies cannot be empty",
-            )
+        # if parent.type == FirestoreDocType.DIRECTORY and not dependencies:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        #         detail="Dependencies cannot be empty",
+        #     )
         for dep in dependencies:
             if dep.status != StatusEnum.COMPLETED:
                 raise HTTPException(

@@ -1,10 +1,10 @@
 import os
-import re
 import uuid
 
 import firebase_admin
 from github.ContentFile import ContentFile
 from github.Repository import Repository
+from magika import Magika
 
 from schemas.documentation_generation import FirestoreRepo, FirestoreDoc, StatusEnum
 from services.data_service import DataService, get_data_service
@@ -92,7 +92,8 @@ class IdentifierService:
 
     def __init__(self, data_service: DataService):
         self.data_service = data_service
-        self.include_pattern = r".*\.(py|js|ts|go|rb)$"
+        # self.include_pattern = r".*\.(py|js|ts|go|rb)$"
+        self.magika = Magika()
 
     def identify(self, repository: Repository, user_id: str) -> FirestoreRepo:
         repo_id = str(uuid.uuid4())
@@ -154,12 +155,19 @@ class IdentifierService:
                 # or not re.match(self.include_pattern, node.name)
             )
 
-            # 99000 bytes is ~20k tokens (depending on the model)
-            is_too_large = node.size > 99000
-            return is_invalid_filename or is_too_large
+            # For some weird edge case:
+            # 247,500 bytes is ~50k tokens (depending on the model).
+            is_too_large = node.size > 247500
+
+            if not is_invalid_filename and not is_too_large:
+                file_info = self.magika.identify_bytes(node.decoded_content)
+                is_code_file = file_info.output.group == "code"
+                return not is_code_file
+            else:
+                return True
         if node.type == "dir":
             is_invalid_dirname = (
-                node.name.startswith(("."))
+                node.name.startswith(".")
                 or any(node.path.endswith(exclude_dir) for exclude_dir in self.exclude_dirs)
             )
 
@@ -183,10 +191,6 @@ if __name__ == "__main__":
     github = get_github_service()
     identifier = get_identifier_service()
 
-    test_repo = github.get_repo_from_url("https://github.com/cs-discord-at-ucf/lion/tree/master")
+    test_repo = github.get_repo_from_url("https://github.com/ryanata/rocketdocs-frontend")
     test_repo = identifier.identify(test_repo, "someone")
     # print(test_repo)
-    # print("YEETED: ", YEETED)
-    # print("ACCEPTED: ", ACCEPTED)
-    # print("YEETED length: ", len(YEETED))
-    # print("ACCEPTED length: ", len(ACCEPTED))
