@@ -36,7 +36,7 @@ from services._prompts import (
     ONE_SHOT_FILE_SYS_PROMPT,
     NO_SHOT_FILE_JSON_SYS_PROMPT,
     NO_SHOT_FOLDER_JSON_SYS_PROMPT,
-    NO_SHOT_FOLDER_SYS_PROMPT,
+    ONE_SHOT_FOLDER_SYS_PROMPT,
 )
 
 
@@ -54,7 +54,7 @@ class DocumentationService:
         self.embedding_service = embedding_service
         self.system_prompt_for_file_json = NO_SHOT_FILE_JSON_SYS_PROMPT
         self.system_prompt_for_folder_json = NO_SHOT_FOLDER_JSON_SYS_PROMPT
-        self.system_prompt_for_folder_markdown = NO_SHOT_FOLDER_SYS_PROMPT
+        self.system_prompt_for_folder_markdown = ONE_SHOT_FOLDER_SYS_PROMPT
         self.system_prompt_for_file_markdown = ONE_SHOT_FILE_SYS_PROMPT
 
     async def generate_doc(
@@ -243,17 +243,9 @@ class DocumentationService:
     ) -> GeneratedDoc:
         self._validate_folder_and_files(folder, files)
 
-        user_prompt_markdown = (
-            "This is the root folder."
-            if not folder.relative_path
-            else f"This is the {folder.relative_path} folder."
-        )
-        user_prompt_markdown += f" It contains:\n" + "\n".join(
-            f"{file.relative_path}: {file.extracted_data.get('description')}"
-            for file in files
-        )
-        user_prompt_markdown += "\nRemember to respond concisely, but accurately."
-
+        folder_path = 'the root folder' if not folder.relative_path else folder.relative_path
+        file_info_list = '\n'.join([f"{i+1}. `{file.relative_path}`: {file.extracted_data.get('description')}" for i, file in enumerate(files)])
+        user_prompt_markdown = f"The folder I need documented is {folder_path}. It contains the following files/folders:\n{file_info_list}"
         return await self._generate_doc_with_fallback(
             model,
             user_prompt_markdown,
@@ -397,13 +389,14 @@ class DocumentationService:
     @staticmethod
     def _extract_first_heading_content(markdown_content: str) -> str:
         parsed = marko.parse(markdown_content)
-        found_heading = False
         heading_content = []
+
         for child in parsed.children:
             if isinstance(child, Heading):
-                if found_heading:
+                if not heading_content:  # Skip the first heading
+                    continue
+                else:
                     break
-                found_heading = True
             html_output = marko.render(child)
             text = BeautifulSoup(html_output, "html.parser").get_text()
             heading_content.append(text)

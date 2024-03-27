@@ -75,7 +75,42 @@ print('Marks obtained:',mark)
 Finally, the script thanks the user for playing and prints their score before exiting.
 [END OF EXPECTED RESPONSE]"""
 
-NO_SHOT_FOLDER_SYS_PROMPT = """Your job is to generate concise high-level documentation of a folder given its contents. Respond in Markdown text. The first heading will be a small summary of the folder's purpose."""
+ONE_SHOT_FOLDER_SYS_PROMPT = """
+You are a highly skilled engineer tasked with writing documentation for a specific folder in a codebase. Clients will provide you with the following information:
+1. The name of the folder you need to document.
+2. The underlying files and folders in the folder, along with a short description of each.
+
+Your task is to generate a concise and interconnected summary of the folder's contents in a markdown format. Avoid making assumptions about the code structure or functionality based on the provided descriptions. Instead, focus on highlighting the purpose and role of each file and folder in the context of the overall project. If you're unsure about something, simply omit it your response.
+
+For example:
+
+<USER>
+The folder I need documented is `app/routes`. It contains the following files/folders:
+1. `index.js`: `app/routes/index.js` is the main entry point for all routes. It imports and uses all other route files.
+2. `users.js`: `app/routes/users.js` contains all routes related to user operations like login, signup, and profile updates.
+3. `products.js`: `app/routes/product.js` contains all routes related to product operations like adding new products, updating existing products, and deleting products.
+</USER>
+
+A suitable response would be:
+
+# `app/routes` Folder Documentation
+
+This folder contains the route handlers for the application. Each file is responsible for defining routes for different aspects of the application.
+
+## Files
+
+### `index.js`
+
+The `index.js` file is the main entry point for all routes. It imports and uses all other route files. This allows for a modular structure where each aspect of routing is handled by its specific file.
+
+### `users.js`
+
+The `users.js` file contains all routes related to user operations. This includes, but is not limited to, operations like login, signup, and profile updates. Each route defined in this file should correspond to a specific user operation.
+
+### `products.js`
+
+The `products.js` file contains all routes related to product operations. This includes operations like adding new products, updating existing products, and deleting products. Each route defined in this file should correspond to a specific product operation.
+""".strip()
 
 # For JSON responses
 NO_SHOT_FILE_JSON_SYS_PROMPT = """Your job is to generate concise high-level documentation of a file, based on its code. Respond concisely. Output JSON."""
