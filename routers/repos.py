@@ -94,7 +94,7 @@ async def search_repo(
     user: Dict[str, Any] = Depends(utils.get_user_token),
 ):
     user_id = user.get("uid")
-    results = await search_service.search(repo_id, query, user_id)
+    results = await search_service.search(repo_id, query)
     return results
 
 @router.get("/repos/{repo_id}/chat", response_class=Response, responses={200: {"content": {"text/event-stream": {}}}})
