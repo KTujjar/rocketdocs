@@ -94,18 +94,17 @@ async def search_repo(
     user: Dict[str, Any] = Depends(utils.get_user_token),
 ):
     user_id = user.get("uid")
-    results = await search_service.search(repo_id, query, user_id)
+    results = await search_service.search(repo_id, query)
     return results
 
 @router.get("/repos/{repo_id}/chat", response_class=Response, responses={200: {"content": {"text/event-stream": {}}}})
 async def chat_sse(
     repo_id: str,
     query: str,
+    user_id: str,
     chat_service: ChatService = Depends(get_chat_service),
-    user: Dict[str, Any] = Depends(utils.get_user_token),
     model: LlmModelEnum = LlmModelEnum.MIXTRAL,
 ):
-    user_id = user.get("uid")
     async def event_stream():
         async for message in chat_service.chat(repo_id, query, user_id, model):
             yield f"data: {message}\n\n"
