@@ -1,3 +1,4 @@
+import json
 from typing import Dict, Any
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Response
@@ -107,7 +108,7 @@ async def chat_sse(
 ):
     async def event_stream():
         async for message in chat_service.chat(repo_id, query, user_id, model):
-            yield f"data: {message}\n\n"
+            yield f"data: {json.dumps(message)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
