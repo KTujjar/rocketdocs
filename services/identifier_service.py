@@ -143,9 +143,15 @@ class IdentifierService:
             if doc_id in post_processed_docs
         }
 
+        post_processed_removed_map = {
+            doc_id: parent_id
+            for doc_id, parent_id in dependencies.items()
+            if doc_id not in post_processed_docs
+        }
+
         # to view removed docs
         post_processed_removed = [
-            docs[doc_id].relative_path for doc_id in post_processed_removed.keys()
+            docs[doc_id].relative_path for doc_id in post_processed_removed_map.keys()
         ]
 
         repo = FirestoreRepo(
@@ -223,9 +229,8 @@ class IdentifierService:
             else:
                 return True
         if node.type == "dir":
-            is_invalid_dirname = (
-                node.name.startswith(".")
-                or any(node.path.endswith(exclude_dir) for exclude_dir in self.exclude_dirs)
+            is_invalid_dirname = node.name.startswith(".") or any(
+                node.path.endswith(exclude_dir) for exclude_dir in self.exclude_dirs
             )
 
             return is_invalid_dirname
@@ -247,6 +252,8 @@ if __name__ == "__main__":
     github = get_github_service()
     identifier = get_identifier_service()
 
-    test_repo = github.get_repo_from_url("https://github.com/ryanata/rocketdocs-frontend")
+    test_repo = github.get_repo_from_url(
+        "https://github.com/ryanata/rocketdocs-frontend"
+    )
     test_repo = identifier.identify(test_repo, "someone")
     # print(test_repo)
