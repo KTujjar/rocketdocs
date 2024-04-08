@@ -1,6 +1,7 @@
 from typing import Dict, Any
 
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Response
+from fastapi.responses import StreamingResponse
 from starlette import status
 
 from schemas.documentation_generation import (
@@ -27,6 +28,7 @@ from services.rag_service.embedding_service import (
     get_embedding_service,
 )
 from services.rag_service.search_service import SearchService, get_search_service
+from services.chat_service import ChatService, get_chat_service
 from routers import utils
 
 router = APIRouter()
@@ -95,8 +97,22 @@ async def search_repo(
     user: Dict[str, Any] = Depends(utils.get_user_token),
 ):
     user_id = user.get("uid")
-    results = await search_service.search(repo_id, query, user_id)
+    results = await search_service.search(repo_id, query)
     return results
+
+@router.get("/repos/{repo_id}/chat", response_class=Response, responses={200: {"content": {"text/event-stream": {}}}})
+async def chat_sse(
+    repo_id: str,
+    query: str,
+    user_id: str,
+    chat_service: ChatService = Depends(get_chat_service),
+    model: LlmModelEnum = LlmModelEnum.MIXTRAL,
+):
+    async def event_stream():
+        async for message in chat_service.chat(repo_id, query, user_id, model):
+            yield f"data: {message}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get("/repos/{repo_id}/{doc_id}")

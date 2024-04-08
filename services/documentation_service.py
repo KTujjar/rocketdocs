@@ -27,6 +27,7 @@ from services.clients.openai_client import get_openai_client
 from services.data_service import DataService, get_data_service
 from services.rag_service.embedding_service import EmbeddingService, get_embedding_service
 from fastapi import BackgroundTasks, HTTPException, status
+from transformers import AutoTokenizer
 
 from dotenv import load_dotenv
 
@@ -36,7 +37,7 @@ from services._prompts import (
     ONE_SHOT_FILE_SYS_PROMPT,
     NO_SHOT_FILE_JSON_SYS_PROMPT,
     NO_SHOT_FOLDER_JSON_SYS_PROMPT,
-    NO_SHOT_FOLDER_SYS_PROMPT,
+    ONE_SHOT_FOLDER_SYS_PROMPT,
 )
 
 
@@ -52,9 +53,10 @@ class DocumentationService:
         self.github_service = github_service
         self.data_service = data_service
         self.embedding_service = embedding_service
+        self.tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1")
         self.system_prompt_for_file_json = NO_SHOT_FILE_JSON_SYS_PROMPT
         self.system_prompt_for_folder_json = NO_SHOT_FOLDER_JSON_SYS_PROMPT
-        self.system_prompt_for_folder_markdown = NO_SHOT_FOLDER_SYS_PROMPT
+        self.system_prompt_for_folder_markdown = ONE_SHOT_FOLDER_SYS_PROMPT
         self.system_prompt_for_file_markdown = ONE_SHOT_FILE_SYS_PROMPT
 
     async def generate_doc(
@@ -76,9 +78,17 @@ class DocumentationService:
                 file_content = self.github_service.get_file_from_url(doc.github_url)
                 generated_doc = await self._generate_doc_for_file(file_content, model)
             elif doc.type == FirestoreDocType.DIRECTORY:
-                generated_doc = await self._generate_doc_for_folder(
-                    doc, dep_docs, model
-                )
+                if dep_docs:
+                    generated_doc = await self._generate_doc_for_folder(
+                        doc, dep_docs, model
+                    )
+                else:
+                    generated_doc = GeneratedDoc(
+                        relative_path=doc.relative_path,
+                        usage=None,
+                        extracted_data={"description": "Folder contains no valid dependencies."},
+                        markdown_content="Folder contains no valid dependencies.",
+                    )
             else:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -232,8 +242,24 @@ class DocumentationService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="File cannot be empty"
             )
-
-        user_prompt_markdown = f"Document the following code file titled {file.path}\n\n{file.decoded_content}"
+        
+        file_content = file.decoded_content.decode("utf-8")
+        token_count = len(self.tokenizer.encode(file_content))
+        # 32k token limit
+        # ~850 for system prompt
+        # 2048 for max input
+        # With margin of error, we limit token count to 28k tokens.
+        if token_count > 28000:
+            extra_tokens = token_count - 28000
+            # Assume 4 chars = 1 token
+            estimated_chars = extra_tokens * 4
+            file_content = file_content[:len(file_content) - estimated_chars]
+            while len(self.tokenizer.encode(file_content)) > 28000:
+                # Delete 400 chars ~ 100 tokens
+                file_content = file_content[:len(file_content) - 400]
+            file_content += "\n..."
+        
+        user_prompt_markdown = f"Document the following code file titled {file.path}\n\n{file_content}"
         return await self._generate_doc_with_fallback(
             model, user_prompt_markdown, self.system_prompt_for_file_markdown, file.path
         )
@@ -243,17 +269,9 @@ class DocumentationService:
     ) -> GeneratedDoc:
         self._validate_folder_and_files(folder, files)
 
-        user_prompt_markdown = (
-            "This is the root folder."
-            if not folder.relative_path
-            else f"This is the {folder.relative_path} folder."
-        )
-        user_prompt_markdown += f" It contains:\n" + "\n".join(
-            f"{file.relative_path}: {file.extracted_data.get('description')}"
-            for file in files
-        )
-        user_prompt_markdown += "\nRemember to respond concisely, but accurately."
-
+        folder_path = 'the root folder' if not folder.relative_path else folder.relative_path
+        file_info_list = '\n'.join([f"{i+1}. `{file.relative_path}`: {file.extracted_data.get('description')}" for i, file in enumerate(files)])
+        user_prompt_markdown = f"The folder I need documented is {folder_path}. It contains the following files/folders:\n{file_info_list}"
         return await self._generate_doc_with_fallback(
             model,
             user_prompt_markdown,
@@ -337,11 +355,11 @@ class DocumentationService:
     def _validate_doc_and_dependencies(
         parent: FirestoreDoc, dependencies: List[FirestoreDoc]
     ) -> None:
-        if parent.type == FirestoreDocType.DIRECTORY and not dependencies:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Dependencies cannot be empty",
-            )
+        # if parent.type == FirestoreDocType.DIRECTORY and not dependencies:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        #         detail="Dependencies cannot be empty",
+        #     )
         for dep in dependencies:
             if dep.status != StatusEnum.COMPLETED:
                 raise HTTPException(
@@ -397,13 +415,14 @@ class DocumentationService:
     @staticmethod
     def _extract_first_heading_content(markdown_content: str) -> str:
         parsed = marko.parse(markdown_content)
-        found_heading = False
         heading_content = []
+
         for child in parsed.children:
             if isinstance(child, Heading):
-                if found_heading:
+                if not heading_content:  # Skip the first heading
+                    continue
+                else:
                     break
-                found_heading = True
             html_output = marko.render(child)
             text = BeautifulSoup(html_output, "html.parser").get_text()
             heading_content.append(text)
@@ -437,13 +456,13 @@ if __name__ == "__main__":
     firebase_app = firebase_admin.initialize_app(
         credential=None, options={"storageBucket": os.getenv("CLOUD_STORAGE_BUCKET")}
     )
-    service = get_documentation_service(LlmModelEnum.GPT3_TURBO)
+    service = get_documentation_service(LlmModelEnum.MIXTRAL)
     github = get_github_service()
     test_file = github.get_file_from_url(
-        "https://github.com/carlos-jmh/miniDiscord/blob/main/chat/storage.go"
+        "https://github.com/cs-discord-at-ucf/lion/blob/master/src/app/__generated__/cat-breeds.json"
     )
 
     test_result = asyncio.run(
-        service._generate_doc_for_file(test_file, LlmModelEnum.GPT3_TURBO)
+        service._generate_doc_for_file(test_file, LlmModelEnum.MIXTRAL)
     )
     print(test_result)

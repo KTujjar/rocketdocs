@@ -16,7 +16,7 @@ class SearchService:
         self.vector_database_client = vector_database_client
         self.data_service = data_service
 
-    async def search(self, repo_id: str, query: str, user_id: str):
+    async def search(self, repo_id: str, query: str, top_k=4):
         # 1. Generate embedding for the query
         query_embedding = await self.embedding_client.generate_embedding(
             model=EmbeddingModelEnum.BGE_LARGE, input=query
@@ -24,7 +24,7 @@ class SearchService:
 
         # 2. Query the vector database
         results = self.vector_database_client.query(
-            namespace=repo_id, query_vector=query_embedding.data[0].embedding, top_k=4, include_metadata=True
+            namespace=repo_id, query_vector=query_embedding.data[0].embedding, top_k=top_k, include_metadata=True
         )
 
         # 3. Retrieve and format the results

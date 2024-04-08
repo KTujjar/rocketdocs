@@ -1,6 +1,6 @@
 import simplejson as json
 import os
-from typing import List, Type, Union
+from typing import Dict, List, Type, Union
 
 from openai.types.chat import ChatCompletion
 from openai.types import CreateEmbeddingResponse
@@ -37,6 +37,22 @@ class AnyscaleClient(LLMClient):
 
         return completion
 
+    async def generate_messages(
+            self, 
+            model: str,
+            messages: List[Dict[str, str]],
+            temperature: float = 1.0,
+            max_tokens: int | None = None
+    ) -> ChatCompletion:
+        completion = await self.anyscale.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+
+        return completion
+    
     async def generate_json(
             self,
             model: str,

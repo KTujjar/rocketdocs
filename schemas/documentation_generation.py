@@ -157,7 +157,7 @@ class UpdateFileDocsResponse(BaseModel):
 
 class GeneratedDoc(BaseModel):
     relative_path: str
-    usage: CompletionUsage
+    usage: Optional[CompletionUsage]
     extracted_data: Dict[str, Any]
     markdown_content: str
 
