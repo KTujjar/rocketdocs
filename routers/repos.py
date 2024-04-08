@@ -24,7 +24,10 @@ from services.documentation_service import (
 from services.github_service import GithubService, get_github_service
 from services.identifier_service import IdentifierService, get_identifier_service
 from services.data_service import DataService, get_data_service
-from services.rag_service.embedding_service import EmbeddingService, get_embedding_service
+from services.rag_service.embedding_service import (
+    EmbeddingService,
+    get_embedding_service,
+)
 from services.rag_service.search_service import SearchService, get_search_service
 from services.chat_service import ChatService, get_chat_service
 from routers import utils
@@ -168,7 +171,7 @@ async def generate_repo_docs(
         documentation_service.generate_repo_docs_and_embed_background_task,
         repo,
         model,
-        user_id
+        user_id,
     )
 
     return GenerateRepoDocsResponse(

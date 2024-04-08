@@ -134,17 +134,80 @@ class IdentifierService:
 
                 dependencies[firestore_doc.id] = parent.id
 
+        post_processed_docs = self._post_process_docs(dependencies, docs)
+
+        # adjust the dependencies to only include post-processed docs
+        post_processed_dependencies = {
+            doc_id: parent_id
+            for doc_id, parent_id in dependencies.items()
+            if doc_id in post_processed_docs
+        }
+
+        post_processed_removed_map = {
+            doc_id: parent_id
+            for doc_id, parent_id in dependencies.items()
+            if doc_id not in post_processed_docs
+        }
+
+        # to view removed docs
+        post_processed_removed = [
+            docs[doc_id].relative_path for doc_id in post_processed_removed_map.keys()
+        ]
+
         repo = FirestoreRepo(
             id=repo_id,
             repo_name=repository.full_name,
             root_doc=root.id,
             status=StatusEnum.NOT_STARTED,
-            dependencies=dependencies,
-            docs=docs,
+            dependencies=post_processed_dependencies,
+            docs=post_processed_docs,
             owner=user_id,
         )
+
         self.data_service.batch_create_repo(repo)
         return repo
+
+    def _post_process_docs(self, dependencies, docs):
+        docs = self._remove_undocumentable_folders(dependencies, docs)
+
+        return docs
+
+    def _remove_undocumentable_folders(self, dependencies, docs):
+        def contains_only_empty_folders(folder_id, dependencies, docs):
+            """
+            Recursively checks if a folder or its subfolders contain only empty folders.
+            """
+            for doc_id, parent_id in dependencies.items():
+                if parent_id == folder_id and docs[doc_id].type == "dir":
+
+                    if not contains_only_empty_folders(doc_id, dependencies, docs):
+                        return False
+
+            # check if the folder contains any files or non-empty folders
+            contains_non_empty_items = any(
+                parent_id == folder_id and docs[doc_id].type != "dir"
+                for doc_id, parent_id in dependencies.items()
+            )
+            if contains_non_empty_items:
+                return False
+
+            return True
+
+        documentable_docs_list = [
+            doc_id
+            for doc_id, doc in docs.items()
+            if (
+                doc.type == "file"
+                or (
+                    doc.type == "dir"
+                    and not contains_only_empty_folders(doc.id, dependencies, docs)
+                )
+            )
+        ]
+
+        documentable_docs = {doc_id: docs[doc_id] for doc_id in documentable_docs_list}
+
+        return documentable_docs
 
     def _skip_node(self, node: ContentFile) -> bool:
         if node.type == "file":
@@ -166,9 +229,8 @@ class IdentifierService:
             else:
                 return True
         if node.type == "dir":
-            is_invalid_dirname = (
-                node.name.startswith(".")
-                or any(node.path.endswith(exclude_dir) for exclude_dir in self.exclude_dirs)
+            is_invalid_dirname = node.name.startswith(".") or any(
+                node.path.endswith(exclude_dir) for exclude_dir in self.exclude_dirs
             )
 
             return is_invalid_dirname
@@ -184,13 +246,14 @@ def get_identifier_service() -> IdentifierService:
 if __name__ == "__main__":
     load_dotenv()
     firebase_app = firebase_admin.initialize_app(
-        credential=None,
-        options={"storageBucket": os.getenv("CLOUD_STORAGE_BUCKET")}
+        credential=None, options={"storageBucket": os.getenv("CLOUD_STORAGE_BUCKET")}
     )
 
     github = get_github_service()
     identifier = get_identifier_service()
 
-    test_repo = github.get_repo_from_url("https://github.com/ryanata/rocketdocs-frontend")
+    test_repo = github.get_repo_from_url(
+        "https://github.com/ryanata/rocketdocs-frontend"
+    )
     test_repo = identifier.identify(test_repo, "someone")
     # print(test_repo)

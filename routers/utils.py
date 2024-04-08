@@ -6,24 +6,33 @@ from fastapi import Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from firebase_admin import auth
 
-from schemas.documentation_generation import FirestoreRepo, RepoFormatted, StatusEnum, FirestoreDoc
+from schemas.documentation_generation import (
+    FirestoreRepo,
+    RepoFormatted,
+    StatusEnum,
+    FirestoreDoc,
+)
 
 
 def get_user_token(
-        res: Response,
-        credential: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))
+    res: Response,
+    credential: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False)),
 ) -> Dict[str, Any]:
     if not credential:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            headers={'WWW-Authenticate': 'Bearer realm="auth_required"'})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            headers={"WWW-Authenticate": 'Bearer realm="auth_required"'},
+        )
     try:
         decoded_token = auth.verify_id_token(credential.credentials)
     except Exception as e:
         logging.error(e)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail=f"Invalid authentication from Firebase. {e}",
-                            headers={'WWW-Authenticate': 'Bearer error="invalid_token"'})
-    res.headers['WWW-Authenticate'] = 'Bearer realm="auth_required"'
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid authentication from Firebase. {e}",
+            headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+        )
+    res.headers["WWW-Authenticate"] = 'Bearer realm="auth_required"'
     return decoded_token
 
 
@@ -42,7 +51,7 @@ def format_repo(repo_response: FirestoreRepo) -> RepoFormatted:
         owner_id=owner_id,
         tree=[],
         nodes_map={},
-        status=repo_status
+        status=repo_status,
     )
 
     def find_doc_by_id(doc_list: list[FirestoreDoc], doc_id) -> FirestoreDoc | None:
@@ -62,7 +71,6 @@ def format_repo(repo_response: FirestoreRepo) -> RepoFormatted:
 
         if not root:
             return
-
         queue = deque([root])
 
         while queue:
