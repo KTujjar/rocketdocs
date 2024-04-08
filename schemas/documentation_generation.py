@@ -30,9 +30,11 @@ class LlmModelEnum(str, Enum):
         ]:
             return LlmProvider.ANYSCALE
 
+
 class EmbeddingModelEnum(str, Enum):
-    BGE_LARGE = "BAAI/bge-large-en-v1.5",
+    BGE_LARGE = ("BAAI/bge-large-en-v1.5",)
     GTE_LARGE = "thenlper/gte-large"
+
 
 class StatusEnum(str, Enum):
     NOT_STARTED = "NOT STARTED"
@@ -204,6 +206,7 @@ class RepoFormatted(BaseModel):
         child: FirestoreDoc,
     ) -> None:
         if parent.id in self.nodes_map.keys():
+
             child_node = RepoNode(
                 id=child.id,
                 path=child.relative_path,

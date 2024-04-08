@@ -59,13 +59,27 @@ class IdentifierService:
 
                 dependencies[firestore_doc.id] = parent.id
 
+        post_processed_docs = self._post_process_docs(dependencies, docs)
+
+        # adjust the dependencies to only include post-processed docs
+        post_processed_dependencies = {
+            doc_id: parent_id
+            for doc_id, parent_id in dependencies.items()
+            if doc_id in post_processed_docs
+        }
+
+        # to view removed docs
+        post_processed_removed = [
+            docs[doc_id].relative_path for doc_id in post_processed_removed.keys()
+        ]
+
         repo = FirestoreRepo(
             id=repo_id,
             repo_name=repository.full_name,
             root_doc=root.id,
             status=StatusEnum.NOT_STARTED,
-            dependencies=dependencies,
-            docs=self._post_process_docs(dependencies, docs),
+            dependencies=post_processed_dependencies,
+            docs=post_processed_docs,
             owner=user_id,
         )
 
